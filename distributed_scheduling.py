@@ -70,7 +70,7 @@ class DistributedAnomalyScheduler:
                 act_prob[n] = 1 - np.power(1 - self.lambdas[n], np.max([0, self.psi[n] - threshold]))
             A = np.sum(act_prob > 0)
             ## TODO separate nodes that are too high
-            activation = np.mean(act_prob)
+            activation = np.mean(act_prob) * 5
             coll = 0
             for a in np.arange(2, A + 1, 1):
                 p_a = np.power(activation, a) * np.power(1 - activation, A - a) * math.comb(A, a)
