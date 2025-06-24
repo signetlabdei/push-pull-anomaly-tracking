@@ -33,7 +33,7 @@ class LocalAnomalyScheduler:
             coll = 0
             for a in np.arange(2, A + 1, 1):
                 p_a = np.power(activation, a) * np.power(1 - activation, A - a) * math.comb(A, a)
-                if (a < P):
+                if a < P:
                     p_c = 1 - math.factorial(P) / math.factorial(P - a) / np.power(P, a)
                 else:
                     p_c = 1
@@ -50,7 +50,7 @@ class LocalAnomalyScheduler:
         for n in range(self.N):
             act_prob[n] = np.sum(self.psi[n, threshold + 1:])
         # There are no collisions
-        if (np.min(outcome) > -0.1):
+        if np.min(outcome) > -0.1:
             # No remaining node has an AoII higher than the threshold
             for n in range(self.N):
                 self.psi[n, threshold + 1:] = 0
@@ -103,4 +103,3 @@ class LocalAnomalyScheduler:
         for a in range(A + 1):
             p_a_cs[a] = p_cs_a[a] * p_a[a] / p_cs
         return p_a_cs
-
