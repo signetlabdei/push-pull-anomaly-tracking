@@ -2,12 +2,12 @@ import numpy as np
 import math
 
 P = 8
-a = 11
+a = 10
 T = int(1e6)
 p_a = 0.05
 
 ct = 4
-st = 3
+st = 0
 
 
 s = np.zeros(T)
@@ -33,9 +33,8 @@ print(p_cs)
 if (a >= 2 * ct + st and P >= ct + st):
     p_cs_a = np.power(1 / P, st) * math.factorial(P) / math.factorial(P - st) * math.comb(a, st)
     print(p_cs_a)
-    p_cs_a *= np.power(1 / P, 2 * ct) * math.factorial(P - st) / math.factorial(P - st - ct) * math.factorial(ct) * math.comb(a - st, ct)
-    # Why are we missing a 2^c factor?
+    p_cs_a *= np.power(1 / P, 2 * ct) * math.factorial(P - st) / math.factorial(P - st - ct) * math.factorial(ct) * math.comb(a - st, ct) * math.comb(a - st - ct, ct) / np.power(2, ct)
     print(p_cs_a)
-    p_cs_a *= np.power(ct / P, a - 2 * ct - st)
+    p_cs_a *= np.power(ct / P, a - 2 * ct - st) / np.power(3, a - 2 * ct - st)
     print(p_cs_a)
 

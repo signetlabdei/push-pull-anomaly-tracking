@@ -7,9 +7,10 @@ class DistributedAnomalyScheduler:
     num_clusters = 0
     cluster_map = []
     state_distributed = []
+    transition_matrix = []
     debug_mode = False
 
-    def __init__(self, N, C, debug_mode):
+    def __init__(self, N, C, p_01, p_11, debug_mode):
         assert N % C == 0, "Number of nodes must be a multiple of the number of cluster"
         self.N = N                      # Number of nodes
         self.C = C                      # Clusters size
@@ -17,6 +18,7 @@ class DistributedAnomalyScheduler:
         self.cluster_map = self.init_cluster_map()          # N times D vector
         self.state_distributed = np.zeros(N, dtype=int)     # y_n in the paper
         self.observations = np.zeros(N, dtype=int)          # o_n in the paper
+        self.create_transition_matrix(p_01, p_11)     # U in the paper
         # The pmf is a 2^C vector per cluster denoting the probability of a particular state_distributed
         self.map_pmf = self.init_map_pmf()  # np.zeros((2 ** C, self.num_clusters)) # \zeta in the paper
         self.debug_mode = debug_mode
@@ -35,6 +37,20 @@ class DistributedAnomalyScheduler:
         # self.state_distributed[np.newaxis].T.repeat(self.num_clusters, axis=1))[self.cluster_map]
         return tmp
 
+    def create_transition_matrix(self, p_01, p_11):
+        states = 2 ** self.C
+        self.transition_matrix = np.zeros((states, states))
+        for idx in range(states):
+            p = np.asarray([[1 - p_01, p_01], [1 - p_11, p_11]])
+            state = DistributedAnomalyScheduler.index_to_cluster_state(idx, self.C)
+            anomalies = np.sum(state)
+            if (anomalies >= self.C / 2):
+                p[1, 0] = 0
+                p[1, 1] = 1
+            for next_idx in range(states):
+                next_state = DistributedAnomalyScheduler.index_to_cluster_state(next_idx, self.C)
+                self.transition_matrix[idx, next_idx] = np.prod(p[state, next_state])
+
     def init_cluster_map(self):
         """Initialize the cluster map with a simple clustering of contiguous N/C nodes
 
@@ -48,8 +64,18 @@ class DistributedAnomalyScheduler:
         return cluster_map
 
     def init_map_pmf(self):
-        self.map_pmf = np.zeros((2 ** C, self.num_clusters))
+        self.map_pmf = np.zeros((2 ** self.C, self.num_clusters))
         self.map_pmf[:, 1] = 1   # Initialization of the state with the probability of being in full 0 state equal to 1
+
+    @staticmethod
+    def index_to_cluster_state(idx, C):
+        """Translator from an index in the pmf to a cluster state.
+
+        :param idx: the index
+        :param C: the number of nodes in the cluster
+        """
+        state = np.array(list(np.binary_repr(idx)), dtype=int)
+        return np.pad(state, C - len(state))[:C]
 
     @staticmethod
     def cluster_state_to_index(cluster_state):
