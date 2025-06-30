@@ -17,9 +17,14 @@ class LocalAnomalyScheduler:
         self.mode = mode
         self.debug_mode = debug_mode
 
-    def schedule(self, P, Q, p_thr):
+    def schedule(self, P, p_thr, pull_sch):
         if (self.debug_mode):
             print('p', self.psi[0,:])
+        # Remove pulled nodes from schedulable
+        for pull_node in pull_sch:
+            self.psi[pull_node, 0] = 1
+            self.psi[pull_node, 1:] = 0
+
         max_ages = np.ones(self.N)
         for n in range(self.N):
             max_age_n = np.where(self.psi[n, :] > 0)[0]
@@ -67,7 +72,7 @@ class LocalAnomalyScheduler:
     def __pessimistic_update_psi(self, threshold, outcome):
         for i in range(self.N):
             # Node i successfully transmitted, we reset AoII to 0
-            if (i in outcome):
+            if (i + 1 in outcome):
                 self.psi[i, :] = 0
                 self.psi[i, 0] = 1
         # There are no collisions
@@ -108,7 +113,7 @@ class LocalAnomalyScheduler:
                     p_c += a / (A - s) * p_a_cs[a]
                     # print('uc', p_c, p_a_cs[a], a)
         for n in range(self.N):
-            # Node i successfully transmitted, we reset AoII to 0
+            # Node n successfully transmitted, we reset AoII to 0
             if (n + 1 in outcome):
                 self.psi[n, 0] = 1
                 self.psi[n, 1:] = 0

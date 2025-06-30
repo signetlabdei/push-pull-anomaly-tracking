@@ -18,8 +18,8 @@ debug_mode = False
 local_anomaly_rate = 0.035
 distributed_cluster_size = 4
 distributed_cluster_number = 10
-p_01 = 0.1
-p_11 = 0.9
+p_01 = 0.01
+p_11 = 0.09
 
 # Prioritization
 aoii_threshold = 5
@@ -54,32 +54,34 @@ for t in range(T):
     else:
         aoii[t, :] = local_state
 
-
     ### SUBFRAME ALLOCATION ###
     local_risk = local_sched.get_risk(aoii_threshold)
+    dist_risk = dist_sched.get_risk()
     # TODO outer loop: decide the values of P and Q
 
 
     ### PULL-BASED SUBFRAME ###
-    # TODO distributed anomaly scheduler: check who gets to transmit
-    scheduled = []
-    # Fix local anomalies
+    scheduled = dist_sched.schedule(Q)
+    # print('s', scheduled)
+    # Fix local anomalies in scheduled slots
     aoii[t, scheduled] = 0
     local_state[scheduled] = 0
 
 
     ### PUSH-BASED SUBFRAME ###
     # Get local anomaly threshold
-    threshold = local_sched.schedule(P, Q, p_c)
+    threshold = local_sched.schedule(P, p_c, scheduled)
 
     # Select random slots for active nodes
     choices = np.random.randint(1, P + 1, nodes) * np.asarray(aoii[t, :] > threshold)
-    outcome = np.zeros(P)
+    outcome = np.zeros(P, dtype=int)
+    successful_push = []
     for p in range(1, P + 1):
         chosen = np.where(choices == p)[0]
         if (chosen.size != 0):
             if (chosen.size == 1):
-                scheduled.append(chosen[0])
+                if (chosen[0] < clustered):
+                    successful_push.append(chosen[0])
                 outcome[p - 1] = chosen[0] + 1
                 local_state[chosen[0]] = 0
                 aoii[t, chosen[0]] = 0
@@ -88,7 +90,9 @@ for t in range(T):
 
     # Local and distributed anomaly belief update
     local_sched.update_psi(threshold, outcome)
-    # TODO distributed scheduler: update beliefs based on observation
+    successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
+    dist_sched.update_zeta(successful, distributed_state[successful])
+    # TODO distributed scheduler: find anomalies and reset them
 
     ### LOGGING ###
     if(np.mod(t,1000) == 0):
