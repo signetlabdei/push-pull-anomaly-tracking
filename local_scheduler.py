@@ -103,7 +103,7 @@ class LocalAnomalyScheduler:
             p_a_cs = self.__bayes_collisions(len(outcome), A, c, s, threshold)
             p_c = 0
             # Total probability that a specific node is a collider
-            for a in np.arange(1, A + 1, 1):
+            for a in np.arange(2 * c + s, A + 1, 1):
                 if (p_a_cs[a] > 0):
                     p_c += a / (A - s) * p_a_cs[a]
                     # print('uc', p_c, p_a_cs[a], a)
@@ -115,13 +115,12 @@ class LocalAnomalyScheduler:
             else:
                 # The node is a potential collider
                 if (act_prob[n] > 0):
-                    if (np.sum(self.psi[n, threshold + 1:]) > 0):
-                        self.psi[n, threshold + 1:] *= p_c / np.sum(self.psi[n, threshold + 1:])
-                        self.psi[n, :] /= np.sum(self.psi[n, :])
+                    self.psi[n, threshold + 1:] *= p_c / np.sum(self.psi[n, threshold + 1:])
+                    self.psi[n, :threshold] *= (1 - p_c) / np.sum(self.psi[n, :threshold])
         # Next time step
         self.psi[:, 1:] = self.psi[:, :-1]
-        self.psi[:, 0] = self.psi[:, 1] * (1 - self.active)
-        self.psi[:, 1] *= self.active
+        self.psi[:, 0] *= (1 - self.active)
+        self.psi[:, 1] = self.psi[:, 0] * self.active
         if (self.debug_mode):
             print('u', threshold, self.psi[0,:])
 
@@ -139,7 +138,9 @@ class LocalAnomalyScheduler:
                p_cs_a[a] *= np.power(1 / P, 2 * c) * math.factorial(P - s) / math.factorial(P - s - c) * math.factorial(c) * math.comb(a - s, c) * math.comb(a - s - c, c) / np.power(2, c)
                p_cs_a[a] *= np.power(c / P, a - 2 * c - s) / np.power(3, a - 2 * c - s)
         p_a_cs = np.zeros(A + 1)
-        p_cs = np.sum(p_cs_a)
+        p_cs = 0
+        for a in range(A + 1):
+            p_cs += p_cs_a[a] * p_a[a]
         if (p_cs > 0):
             for a in range(A + 1):
                 p_a_cs[a] = p_cs_a[a] * p_a[a] / p_cs
