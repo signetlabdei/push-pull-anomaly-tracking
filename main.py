@@ -47,7 +47,7 @@ for t in range(T):
                 p = p_11
             else:
                 p = 1
-        new_state[s] = np.random.rand() < p)
+        new_state[i] = np.random.rand() < p
     distributed_state = new_state
     if (t > 0):
         aoii[t, :] = aoii[t - 1, :] + local_state
@@ -56,7 +56,7 @@ for t in range(T):
 
 
     ### SUBFRAME ALLOCATION ###
-    local_risk = l_sched.get_risk(aoii_threshold)
+    local_risk = local_sched.get_risk(aoii_threshold)
     # TODO outer loop: decide the values of P and Q
 
 

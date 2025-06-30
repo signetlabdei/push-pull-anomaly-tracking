@@ -100,7 +100,7 @@ class LocalAnomalyScheduler:
             c = len(np.where(outcome < -0.1)[0])
             s = len(np.where(outcome > 0.1)[0])
             # print('uc',A,c,s)
-            p_a_cs = self.__bayes_collisions(len(outcome), A, c, s, threshold)
+            p_a_cs = self.__bayes_collisions(len(outcome), A, c, s, np.mean(act_prob), threshold)
             p_c = 0
             # Total probability that a specific node is a collider
             for a in np.arange(2 * c + s, A + 1, 1):
@@ -115,8 +115,9 @@ class LocalAnomalyScheduler:
             else:
                 # The node is a potential collider
                 if (act_prob[n] > 0):
-                    self.psi[n, threshold + 1:] *= p_c / np.sum(self.psi[n, threshold + 1:])
-                    self.psi[n, :threshold] *= (1 - p_c) / np.sum(self.psi[n, :threshold])
+                    self.psi[n, threshold + 1:] *= p_c / act_prob[n]
+                    if (np.sum(self.psi[n, :threshold]) > 0):
+                        self.psi[n, :threshold] *= (1 - p_c) / np.sum(self.psi[n, :threshold])
         # Next time step
         self.psi[:, 1:] = self.psi[:, :-1]
         self.psi[:, 0] *= (1 - self.active)
@@ -124,11 +125,7 @@ class LocalAnomalyScheduler:
         if (self.debug_mode):
             print('u', threshold, self.psi[0,:])
 
-    def __bayes_collisions(self, P, A, c, s, threshold):
-        act_prob = np.zeros(self.N)
-        for n in range(self.N):
-            act_prob[n] = np.sum(self.psi[n, threshold + 1:])
-        activation = np.mean(act_prob)
+    def __bayes_collisions(self, P, A, c, s, activation, threshold):
         p_cs_a = np.zeros(A + 1)
         p_a = np.zeros(A + 1)
         for a in range(A + 1):
