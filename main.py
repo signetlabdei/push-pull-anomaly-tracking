@@ -10,7 +10,6 @@ M = 100
 P = 10
 Q = 10
 T = int(1e5)
-p_c = 0.2
 mode = 1
 debug_mode = False
 
@@ -21,7 +20,9 @@ distributed_cluster_number = 10
 p_01 = 0.01
 p_11 = 0.9
 
-# Prioritization
+# Algorithm parameters
+p_c = 0.2
+distributed_detection = 0.9
 aoii_threshold = 5
 
 # Utility variables
@@ -40,13 +41,14 @@ for t in range(T):
     local_state = np.minimum(np.ones(nodes), local_state + np.asarray(np.random.rand(nodes) < local_anomaly_rate))
     new_state = np.zeros(clustered)
     for i in range(clustered):
+        cluster_id = int(np.floor(i / distributed_cluster_size))
         p = p_01
         if (distributed_state[i] == 1):
-            # TODO check if cluster is in anomaly state!
-            if (p == p_01):
-                p = p_11
-            else:
+            anomaly = np.sum(distributed_state[distributed_cluster_size * (cluster_id - 1): distributed_cluster_size * cluster_id]) >= distributed_cluster_size / 2
+            if (anomaly):
                 p = 1
+            else:
+                p = p_11
         new_state[i] = np.random.rand() < p
     distributed_state = new_state
     if (t > 0):
@@ -59,19 +61,17 @@ for t in range(T):
     dist_risk = dist_sched.get_risk()
     # TODO outer loop: decide the values of P and Q
 
-
     ### PULL-BASED SUBFRAME ###
+    # Get pull schedule
     scheduled = dist_sched.schedule(Q)
     # print('s', scheduled)
     # Fix local anomalies in scheduled slots
     aoii[t, scheduled] = 0
     local_state[scheduled] = 0
-    # TODO do we consider this in the push threshold decision?
 
     ### PUSH-BASED SUBFRAME ###
     # Get local anomaly threshold
     threshold = local_sched.schedule(P, p_c, scheduled)
-
     # Select random slots for active nodes
     choices = np.random.randint(1, P + 1, nodes) * np.asarray(aoii[t, :] > threshold)
     outcome = np.zeros(P, dtype=int)
@@ -88,11 +88,16 @@ for t in range(T):
             else:
                 outcome[p - 1] = -1
 
+    ### POST-FRAME UPDATE ###
     # Local and distributed anomaly belief update
     local_sched.update_psi(threshold, outcome)
     successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
     dist_sched.update_zeta(successful, distributed_state[successful])
-    # TODO distributed scheduler: find anomalies and reset them
+    # Reset detected distributed anomalies
+    for c in range(distributed_cluster_number):
+        anomaly = dist_sched.get_cluster_risk(c)
+        if (anomaly >= distributed_detection):
+            distributed_state[distributed_cluster_size * (c - 1) : distributed_cluster_size * c] = 0
 
     ### LOGGING ###
     if(np.mod(t,1000) == 0):
