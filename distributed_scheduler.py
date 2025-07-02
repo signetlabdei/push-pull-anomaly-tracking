@@ -101,6 +101,7 @@ class DistributedAnomalyScheduler:
                 scheduled[-free_slots : -free_slots + self.C] = nodes
             else:
                 scheduled[-free_slots:] = nodes[:free_slots]
+                # TODO not always the first 2 nodes!
             free_slots -= self.C
             current_priority += 1
         return scheduled.astype(int)
@@ -126,7 +127,6 @@ class DistributedAnomalyScheduler:
             self.__forward_rule(c, cluster_obs)
         # print('p1',self.map_pmf)
 
-
     def get_risk(self):
         total_risk = 0
         for cluster in range(self.num_clusters):
@@ -141,6 +141,14 @@ class DistributedAnomalyScheduler:
                 risk += self.map_pmf[state, cluster]
         return risk
 
+    def get_node_uncertainty(self, cluster, node):
+        p_1 = 0
+        for state in range(2 ** self.C):
+            if (list(np.binary_repr(state)) == '1'):
+                p_1 += self.map_pmf[state, cluster]
+        uncertainty = 0
+        # TODO compute entropy
+        return uncertainty
 
     def __forward_rule(self, cluster, observation):
         missing = len(np.where(observation < 0)[0])

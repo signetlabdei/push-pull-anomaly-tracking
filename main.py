@@ -19,13 +19,13 @@ local_anomaly_rate = 0.035
 distributed_cluster_size = 4
 distributed_cluster_number = 10
 p_01 = 0.01
-p_11 = 0.09
+p_11 = 0.9
 
 # Prioritization
 aoii_threshold = 5
 
 # Utility variables
-clustered = distributed_cluster_number * distributed_cluster_size
+clustered = distributed_cluster_number * distributed_cluster_size   # The first clustered nodes have distributed anomalies
 local_state = np.zeros(nodes)
 distributed_state = np.zeros(clustered)
 aoii = np.zeros((T, nodes))
@@ -66,7 +66,7 @@ for t in range(T):
     # Fix local anomalies in scheduled slots
     aoii[t, scheduled] = 0
     local_state[scheduled] = 0
-
+    # TODO do we consider this in the push threshold decision?
 
     ### PUSH-BASED SUBFRAME ###
     # Get local anomaly threshold
