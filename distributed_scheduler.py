@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import itertools
 
 class DistributedAnomalyScheduler:
     N = 0
@@ -86,24 +87,41 @@ class DistributedAnomalyScheduler:
         state_str = ''.join(str(x) for x in cluster_state)
         return int(state_str, base=2)
 
-    def schedule(self, Q):
+    def schedule(self, Q, p_thr = 0):
         cluster_risk = np.zeros(self.num_clusters)
         for c in range(self.num_clusters):
             cluster_risk[c] = self.get_cluster_risk(c)
         # Simple scheduler: sort clusters by risk, then fill
-        priority = np.argsort(-cluster_risk)
+        cluster_priority = np.argsort(-cluster_risk)
+        node_priority = -np.ones(self.N)
         free_slots = Q
-        current_priority = 0
-        scheduled = np.zeros(Q)
+        cluster_idx = 0
+        scheduled = -np.ones(Q)
         while (free_slots > 0):
-            nodes = np.where(self.cluster_map == priority[current_priority])[0]
-            if (free_slots >= self.C):
+            # Check if there are high-risk clusters
+            if (cluster_risk[cluster_idx] >= p_thr and free_slots >= self.C):
+                # Iterate by cluster
+                nodes = np.where(self.cluster_map == cluster_priority[cluster_idx])[0]
                 scheduled[-free_slots : -free_slots + self.C] = nodes
+                free_slots -= self.C
+                cluster_idx += 1
             else:
-                scheduled[-free_slots:] = nodes[:free_slots]
-                # TODO not always the first 2 nodes!
-            free_slots -= self.C
-            current_priority += 1
+                # Iterate by remaining node
+                for node in range(self.N):
+                    if (node not in scheduled and node_priority[node] < 0):
+                        # The node can be scheduled
+                        cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
+                        prev = np.intersect1d(cluster_nodes, scheduled)
+                        if (np.size(cluster_nodes) > 0):
+                            nodes = np.append(prev, node)
+                        else:
+                            nodes = np.asarray([node], dtype =int)
+                        nodes -= self.cluster_map[node] * self.C
+                        node_priority[node] = self.__get_information(self.cluster_map[node], nodes.astype(int))
+                next_node = np.argmax(node_priority)
+                scheduled[-free_slots] = next_node
+                node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
+                free_slots -= 1
         return scheduled.astype(int)
 
     def update_zeta(self, scheduled, observations):
@@ -141,14 +159,24 @@ class DistributedAnomalyScheduler:
                 risk += self.map_pmf[state, cluster]
         return risk
 
-    def get_node_uncertainty(self, cluster, node):
-        p_1 = 0
-        for state in range(2 ** self.C):
-            if (list(np.binary_repr(state)) == '1'):
-                p_1 += self.map_pmf[state, cluster]
-        uncertainty = 0
-        # TODO compute entropy
-        return uncertainty
+    def __get_information(self, cluster, nodes):
+        risk = self.get_cluster_risk(cluster)
+        new_risk = 0
+        patterns = list(itertools.product([0, 1], repeat=np.size(nodes)))
+        for pattern in patterns:
+            p_arr = np.asarray(pattern, dtype=int)
+            p_pattern = 0
+            p_anomaly = 0
+            for state in range(2 ** self.C):
+                if (np.dot(self.index_to_cluster_state(state, self.C)[nodes], 1 - p_arr) == 0 ):
+                    p_pattern += self.map_pmf[state, cluster]
+                    anomaly = np.sum(np.array(list(np.binary_repr(state)), dtype=int))
+                    if (anomaly >= self.C / 2):
+                        p_anomaly += self.map_pmf[state, cluster]
+            new_risk += p_pattern * p_anomaly
+        old_prob = np.asarray([1 - risk, risk])
+        new_prob = np.asarray([1 - new_risk, new_risk])
+        return np.dot(np.log2(new_prob), new_prob) - np.dot(np.log2(old_prob), old_prob)
 
     def __forward_rule(self, cluster, observation):
         missing = len(np.where(observation < 0)[0])

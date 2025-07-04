@@ -6,15 +6,15 @@ class LocalAnomalyScheduler:
     psi = []
     active = 0
     debug_mode = False
-    mode = 0
+    scheduler_type = 0
 
-    def __init__(self, N, M, activation, mode, debug_mode):
+    def __init__(self, N, M, activation, scheduler_type, debug_mode):
         self.N = N
         self.psi = np.zeros((N,M))
         self.psi[:, 0] = 1 - activation
         self.psi[:, 1] = activation
         self.active = activation
-        self.mode = mode
+        self.scheduler_type = scheduler_type
         self.debug_mode = debug_mode
 
     def schedule(self, P, p_thr, pull_sch):
@@ -33,11 +33,11 @@ class LocalAnomalyScheduler:
         max_age = np.max(max_ages)
         for threshold in np.arange(0, max_age - 1, 1):
             act_prob = np.zeros(self.N)
-            if (self.mode == 0):
+            if (self.scheduler_type == 0):
                 for n in range(self.N):
                     if (max_ages[n] > threshold):
                         act_prob[n] = np.power(self.active, max_ages[n] - threshold)
-            if (self.mode == 1):
+            if (self.scheduler_type == 1):
                     for n in range(self.N):
                         act_prob[n] = np.sum(self.psi[n, int(threshold) + 1:])
             p_coll = self.__eval_threshold(P, act_prob)
@@ -48,9 +48,9 @@ class LocalAnomalyScheduler:
         return int(np.max([0, max_age - 2]))
 
     def update_psi(self, threshold, outcome):
-        if (self.mode == 0):
+        if (self.scheduler_type == 0):
             return self.__pessimistic_update_psi(threshold, outcome)
-        if (self.mode == 1):
+        if (self.scheduler_type == 1):
             return self.__bayes_update_psi(threshold, outcome)
 
     def get_risk(self, threshold):
