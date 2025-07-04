@@ -111,13 +111,13 @@ class DistributedAnomalyScheduler:
                     if (node not in scheduled and node_priority[node] < 0):
                         # The node can be scheduled
                         cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
-                        prev = np.intersect1d(cluster_nodes, scheduled)
+                        prev = np.intersect1d(cluster_nodes, scheduled) - self.cluster_map[node] * self.C
+                        node_id = node - self.cluster_map[node] * self.C
                         if (np.size(cluster_nodes) > 0):
-                            nodes = np.append(prev, node)
+                            nodes = np.append(prev, node_id)
                         else:
-                            nodes = np.asarray([node], dtype =int)
-                        nodes -= self.cluster_map[node] * self.C
-                        node_priority[node] = self.__get_information(self.cluster_map[node], nodes.astype(int))
+                            nodes = np.asarray([node_id], dtype =int)
+                        node_priority[node] = self.__get_information(self.cluster_map[node], nodes.astype(int)) - self.__get_information(self.cluster_map[node], prev.astype(int))
                 next_node = np.argmax(node_priority)
                 scheduled[-free_slots] = next_node
                 node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
