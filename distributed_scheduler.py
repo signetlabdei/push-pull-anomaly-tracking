@@ -60,6 +60,7 @@ class DistributedAnomalyScheduler:
             p = np.asarray([[1 - p_01, p_01], [1 - p_11, p_11]])
             state = self.index_to_cluster_state(state_ind, self.C)
             anomalies = np.sum(state)
+            # When an anomaly occurs, nodes in state 1 do not go back to state 0
             if anomalies >= self.C / 2:
                 p[1, 0] = 0
                 p[1, 1] = 1
@@ -81,7 +82,7 @@ class DistributedAnomalyScheduler:
         cluster_risk = np.zeros(self.num_clusters)
         for c in range(self.num_clusters):
             cluster_risk[c] = self.get_cluster_risk(c)
-        # Simple scheduler: sort clusters by risk, then fill
+        # Cluster-based scheduler: sort clusters by risk, then fill
         cluster_priority = np.argsort(-cluster_risk)
         node_priority = -np.ones(self.N)
         free_slots = Q
@@ -98,16 +99,18 @@ class DistributedAnomalyScheduler:
             else:
                 # Iterate by remaining node
                 for node in range(self.N):
+                    # We need to recompute the information gain
                     if node not in scheduled and node_priority[node] < 0:
-                        # The node can be scheduled
+                        # Check whether the node can be scheduled
                         cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
                         prev = np.intersect1d(cluster_nodes, scheduled) - self.cluster_map[node] * self.C
                         node_id = node - self.cluster_map[node] * self.C
+                        # Find previously scheduled nodes in the same cluster
                         if np.size(cluster_nodes) > 0:
                             nodes = np.append(prev, node_id)
                         else:
                             nodes = np.asarray([node_id], dtype=int)
-                        # TODO: check if the difference is already made in __get_information
+                        # Compute the information gain
                         node_priority[node] = self.__get_information(self.cluster_map[node], nodes.astype(int)) - self.__get_information(self.cluster_map[node], prev.astype(int))
                 next_node = np.argmax(node_priority)
                 scheduled[-free_slots] = next_node
@@ -186,23 +189,25 @@ class DistributedAnomalyScheduler:
         :param nodes:
         :return:
         """
-        risk = self.get_cluster_risk(cluster)
         new_risk = 0
+        # Find possible combinations of outcomes for scheduled nodes
         patterns = list(itertools.product([0, 1], repeat=np.size(nodes)))
         for pattern in patterns:
             p_arr = np.asarray(pattern, dtype=int)
             p_pattern = 0
             p_anomaly = 0
             for state_ind in range(self.num_states):
+                # Check if the state matches the pattern
                 if np.dot(self.index_to_cluster_state(state_ind, self.C)[nodes], 1 - p_arr) == 0:
                     p_pattern += self.state_pmf[state_ind, cluster]
+                    # If the state is anomalous, increase the risk
                     anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
                     if anomaly >= self.C / 2:
                         p_anomaly += self.state_pmf[state_ind, cluster]
             new_risk += p_pattern * p_anomaly
-        old_prob = np.asarray([risk, 1 - risk, risk])
+        # Compute binary entropy over the total probability
         new_prob = np.asarray([new_risk, 1 - new_risk])
-        return self.binary_entropy(new_prob) - self.binary_entropy(old_prob)
+        return self.binary_entropy(new_prob)
 
     def __forward_rule(self, cluster, observation):
         """It applies the indicator function and the normalization of eq. (16) for the forward rule
