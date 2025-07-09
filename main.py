@@ -6,7 +6,7 @@ import distributed_scheduler as d_sch
 # Main system parameters
 nodes = 100
 max_age = 100
-M = 100
+M = 100     # S = 20
 P = 10
 Q = 10
 T = int(1e5)
@@ -43,15 +43,15 @@ for t in range(T):
     for i in range(clustered):
         cluster_id = int(np.floor(i / distributed_cluster_size))
         p = p_01
-        if (distributed_state[i] == 1):
+        if distributed_state[i] == 1:
             anomaly = np.sum(distributed_state[distributed_cluster_size * (cluster_id - 1): distributed_cluster_size * cluster_id]) >= distributed_cluster_size / 2
-            if (anomaly):
+            if anomaly:
                 p = 1
             else:
                 p = p_11
         new_state[i] = np.random.rand() < p
     distributed_state = new_state
-    if (t > 0):
+    if t > 0:
         aoii[t, :] = aoii[t - 1, :] + local_state
     else:
         aoii[t, :] = local_state
@@ -78,9 +78,9 @@ for t in range(T):
     successful_push = []
     for p in range(1, P + 1):
         chosen = np.where(choices == p)[0]
-        if (chosen.size != 0):
-            if (chosen.size == 1):
-                if (chosen[0] < clustered):
+        if chosen.size != 0:
+            if chosen.size == 1:
+                if chosen[0] < clustered:
                     successful_push.append(chosen[0])
                 outcome[p - 1] = chosen[0] + 1
                 local_state[chosen[0]] = 0
@@ -92,23 +92,27 @@ for t in range(T):
     # Local and distributed anomaly belief update
     local_sched.update_psi(threshold, outcome)
     successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
-    dist_sched.update_zeta(successful, distributed_state[successful])
+    cluster_in_anomaly = dist_sched.update_state_pmf(successful, distributed_state[successful], distributed_detection)
+    # Reset state for cluster where an anomaly was found
+    for cluster in cluster_in_anomaly:
+        distributed_state[distributed_cluster_size * (cluster - 1): distributed_cluster_size * cluster] = 0
+    # OLD DEPRECATED
     # Reset detected distributed anomalies
-    for c in range(distributed_cluster_number):
-        anomaly = dist_sched.get_cluster_risk(c)
-        if (anomaly >= distributed_detection):
-            distributed_state[distributed_cluster_size * (c - 1) : distributed_cluster_size * c] = 0
+    # for c in range(distributed_cluster_number):
+    #     anomaly = dist_sched.get_cluster_risk(c)
+    #     if (anomaly >= distributed_detection):
+    #         distributed_state[distributed_cluster_size * (c - 1) : distributed_cluster_size * c] = 0
 
     ### LOGGING ###
-    if(np.mod(t,1000) == 0):
+    if np.mod(t,1000) == 0:
         print('Step:', t)
-    if (debug_mode):
+    if debug_mode:
         print('s', local_state)
         print('t', threshold)
         print('c', choices)
         print('o', outcome)
         print('a',aoii[t,:])
-        input("Press Enter to continue...")
+        # input("Press Enter to continue...")
 
 
 # Plotting local anomaly AoII
