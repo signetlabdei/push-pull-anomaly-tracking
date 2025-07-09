@@ -19,25 +19,12 @@ class DistributedAnomalyScheduler:
         self.C = C                      # Clusters size
         self.num_clusters = N // C      # Number of clusters (D in the paper)
         self.cluster_map = self.init_cluster_map()          # N times 1 vector
-        self.state_distributed = np.zeros(N, dtype=int)     # y_n in the paper
         self.observations = np.zeros(N, dtype=int)          # o_n in the paper
         # The pmf is a 2^C vector per cluster denoting the probability of a particular state_distributed
         self.num_states = 2 ** C  # number of possible states for the MAP pmf
         self.init_map_pmf()             # \zeta in the paper
         self.create_transition_matrix(p_01, p_11)  # U in the paper
         self.debug_mode = debug_mode
-
-    @property
-    def anomaly_appearance(self):   # latin z in the paper
-        return np.sum(self.state_distributed[np.newaxis].T * self.cluster_map, axis=0) >= self.C / 2
-
-    @property
-    def state_distributed_cluster(self):    # [y^(i)]_{i=1}^D in the paper
-        # For loop version
-        tmp = np.zeros((self.C, self.num_clusters), dtype=int)
-        for i in range(self.num_clusters):
-            tmp[:, i] = self.state_distributed[self.cluster_map[:, i]]
-        return tmp
 
     def create_transition_matrix(self, p_01, p_11):
         self.transition_matrix = np.zeros((self.num_states, self.num_states))
@@ -55,8 +42,7 @@ class DistributedAnomalyScheduler:
     def init_cluster_map(self):
         """Initialize the cluster map with a simple clustering of contiguous N/C nodes
 
-        :output cluster_map: N times D boolean matrix, each i-th column is a boolean vector saying which nodes belong
-                            to cluster i-th
+        :output cluster_map: N-size int vector, listing the cluster of each node
         """
         cluster_map = np.zeros(self.N, dtype=int)
         for i in range(self.num_clusters):
@@ -105,12 +91,19 @@ class DistributedAnomalyScheduler:
                 free_slots -= 1
         return scheduled.astype(int)
 
-    def update_map_pmf(self, scheduled, observations):
+    def update_map_pmf(self,
+                       scheduled: list or np.ndarray,
+                       observations: np.ndarray,
+                       detection_threshold: float) -> list:
         """Update map_pmf according to (16)
 
-        :param scheduled: index of nodes scheduled in the current frame
+        :param scheduled: list of ints, index of nodes scheduled in the current frame
         :param observations: observation vector in the current frame
+        :param detection_threshold: float in [0, 1], probability threshold for detection of distributed anomalies
+
+        :output clusters_in_anomaly: list containing cluster indexes where an anomaly was recognized
         """
+        # TODO: make a single for loop. All the operation could be done for each cluster separately
         # A priori probability: update PMF for every cluster
         new_pmf = np.zeros((self.num_states, self.num_clusters))
         for cluster in range(self.num_clusters):
@@ -131,7 +124,17 @@ class DistributedAnomalyScheduler:
                 if len(sched) > 0:
                     cluster_obs[n] = observations[sched]
             self.__forward_rule(cluster, cluster_obs)
-        # print('p1',self.map_pmf)
+
+        # Reset distributed state if an anomaly is identified
+        clusters_in_anomaly = []
+        for cluster in range(self.num_clusters):
+            risk_anomaly = self.get_cluster_risk(cluster)
+            # if the probability of the anomaly is higher than the threshold, the anomaly is recognized
+            # Thus, we reset the state
+            if risk_anomaly >= detection_threshold:
+                self.map_pmf[:, cluster] = np.hstack((1, np.zeros(self.num_states -1)))     # Delta on the first state
+                clusters_in_anomaly.append(cluster)
+        return clusters_in_anomaly
 
     def get_risk(self):
         total_risk = 0
@@ -225,10 +228,3 @@ class DistributedAnomalyScheduler:
         else:
             return -np.dot(np.log2(prob_vector), prob_vector)
 
-if "__main__" == __name__:
-    N = 40
-    C = 4
-    debug_mode = True
-    local_sched = DistributedAnomalyScheduler(N, C, debug_mode)
-    print(local_sched.anomaly_appearance)
-    print(local_sched.state_distributed_cluster)
