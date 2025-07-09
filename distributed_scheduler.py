@@ -73,8 +73,8 @@ class DistributedAnomalyScheduler:
         """Scheduling method for nodes
 
         :param pull_resources: int, number of REs for pull communication (Q in the paper)
-        :param cluster_risk_thr: float, threshold for cluster's risk. All nodes in clusters with risk of anomaly higher than this
-                    should be scheduled
+        :param cluster_risk_thr: float, threshold for cluster's risk. All nodes in clusters with risk of anomaly
+                                higher than this should be scheduled
 
         :return: np.ndarray of ints representing the indexes of scheduled nodes
         """
@@ -158,7 +158,7 @@ class DistributedAnomalyScheduler:
             # if the probability of the anomaly is higher than the threshold, the anomaly is recognized
             # Thus, we reset the state
             if risk_anomaly >= detection_threshold:
-                self.state_pmf[:, cluster] = np.hstack((1, np.zeros(self.num_states - 1)))     # Delta on the first state
+                self.state_pmf[:, cluster] = np.hstack((1, np.zeros(self.num_states - 1)))   # Delta on the first state
                 clusters_in_anomaly.append(cluster)
         return clusters_in_anomaly
 
@@ -219,10 +219,6 @@ class DistributedAnomalyScheduler:
         :param cluster: index of cluster under consideration
         :param observation: observation vector for the nodes in the cluster under consideration
         """
-        if self.debug_mode:
-            print('BEFORE FORWARD')
-            print(self.state_pmf[:, cluster])
-            print('THEN')
         missing = len(np.where(observation < 0)[0])
         # If observation are all "no transmission" nothing to do here
         if missing == self.cluster_size:
@@ -235,34 +231,37 @@ class DistributedAnomalyScheduler:
             for n in range(self.cluster_size):
                 if observation[n] >= 0 and observation[n] != state[n]:
                     self.state_pmf[state_ind, cluster] = 0
-            if self.debug_mode:
-                print(self.state_pmf[:, cluster])
+            # if self.debug_mode:
+            #     print(self.state_pmf[:, cluster])
         self.state_pmf[:, cluster] /= np.sum(self.state_pmf[:, cluster])
 
     @staticmethod
-    def index_to_cluster_state(idx, cluster_size):
+    def index_to_cluster_state(idx, cluster_size) -> np.ndarray:
         """Translator from an index in the pmf to a cluster state.
 
         :param idx: the index
         :param cluster_size: the number of nodes in the cluster
+        :return: cluster state vector
         """
         state = np.array(list(np.binary_repr(idx)), dtype=int)
         return np.pad(state, cluster_size - len(state))[:cluster_size]
 
     @staticmethod
-    def cluster_state_to_index(cluster_state):
+    def cluster_state_to_index(cluster_state) -> int:
         """Translator from a cluster state to an index in the pmf.
 
         :param cluster_state: D-dimensional integer vector
+        :return: cluster state vector index (from 0 to 2^C -1)
         """
         state_str = ''.join(str(x) for x in cluster_state)
         return int(state_str, base=2)
 
     @staticmethod
-    def binary_entropy(prob_vector):
+    def binary_entropy(prob_vector) -> float:
         """Compute the binary entropy given the probability vector.
 
         :param prob_vector: 2-dimensional real vector p, 1-p
+        :return: binary entropy given the probability vector by eq. (19)
         """
         if prob_vector[0] == 0.5:
             return 1
