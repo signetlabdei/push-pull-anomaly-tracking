@@ -8,13 +8,13 @@ nodes = 100
 max_age = 100
 M = 100     # S = 20
 P = 10
-Q = 10
+Q = 20
 T = int(1e5)
 mode = 1
 debug_mode = False
 
 # Anomaly parameters
-local_anomaly_rate = 0.035
+local_anomaly_rate = 0.01
 distributed_cluster_size = 4
 distributed_cluster_number = 10
 p_01 = 0.01
@@ -63,7 +63,7 @@ for t in range(T):
 
     ### PULL-BASED SUBFRAME ###
     # Get pull schedule
-    scheduled = dist_sched.schedule(Q)
+    scheduled = dist_sched.schedule(Q, 0.3)
     # print('s', scheduled)
     # Fix local anomalies in scheduled slots
     aoii[t, scheduled] = 0

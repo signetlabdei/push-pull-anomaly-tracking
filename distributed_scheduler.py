@@ -112,8 +112,8 @@ class DistributedAnomalyScheduler:
                         else:
                             nodes = np.asarray([node_id], dtype=int)
                         # Compute the information gain
-                        node_priority[node] = (self.__get_information(self.cluster_map[node], nodes) -
-                                               self.__get_information(self.cluster_map[node], prev))
+                        node_priority[node] = (self.__get_information(self.cluster_map[node], prev) -
+                                               self.__get_information(self.cluster_map[node], nodes))
                 # Schedule the node with the highest priority
                 next_node = np.argmax(node_priority)
                 scheduled[-free_resources] = next_node
@@ -190,7 +190,7 @@ class DistributedAnomalyScheduler:
         :param nodes: observed nodes in the cluster
         :return: a posteriori entropy given the observed nodes in the cluster
         """
-        new_risk = 0
+        info = 0
         # Find possible combinations of outcomes for scheduled nodes
         patterns = list(itertools.product([0, 1], repeat=np.size(nodes)))
         for pattern in patterns:
@@ -205,10 +205,12 @@ class DistributedAnomalyScheduler:
                     anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
                     if anomaly >= self.cluster_size / 2:
                         p_anomaly += self.state_pmf[state_ind, cluster]
-            new_risk += p_pattern * p_anomaly
-        # Compute binary entropy over the total probability
-        new_prob = np.asarray([new_risk, 1 - new_risk])
-        return self.binary_entropy(new_prob)
+            if (p_pattern > 0):
+                # Compute binary entropy over the conditional probability
+                risk = p_anomaly / p_pattern
+                # Law of total probability
+                info += p_pattern * self.binary_entropy([1 - risk, risk])
+        return info
 
     def __forward_rule(self, pmf, observation) -> np.ndarray:
         """It applies the indicator function and the normalization of eq. (16) for the forward rule

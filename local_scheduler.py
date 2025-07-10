@@ -146,4 +146,6 @@ class LocalAnomalyScheduler:
         if (p_cs > 0):
             for a in range(A + 1):
                 p_a_cs[a] = p_cs_a[a] * p_a[a] / p_cs
-        return p_a_cs / np.sum(p_a_cs)
+        if (np.sum(p_a_cs) > 0):
+            p_a_cs /= np.sum(p_a_cs)
+        return p_a_cs
