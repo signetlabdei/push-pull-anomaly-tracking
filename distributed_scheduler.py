@@ -206,17 +206,14 @@ class DistributedAnomalyScheduler:
         # Find possible combinations of outcomes for scheduled nodes
         patterns = np.array(list(itertools.product([0, 1], repeat=np.size(nodes))))
         for pattern in patterns:
-            p_pattern = 0.       # eq. (22) in the paper
-            p_anomaly = 0.       # argument of eq. (20) in the paper
+            p_pattern = 0.       # \eta_k eq. (21) in the paper
+            p_anomaly = 0.       # numerator of argument in eq. (20) in the paper
             for state_ind in range(self.num_states):
                 # Check if the state matches the pattern
-                # if np.dot(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes], 1 - p_arr) == 0:
                 if np.all(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes] == pattern):
                     p_pattern += self.state_pmf[state_ind, cluster]
                     # If the state is anomalous, increase the risk
-                    # anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
                     if np.sum(self.index_to_cluster_state(state_ind, self.cluster_size)) >= self.cluster_size / 2:
-                    # if anomaly >= self.cluster_size / 2:
                         p_anomaly += self.state_pmf[state_ind, cluster]
             if p_pattern > 0:
                 # Compute binary entropy over the conditional probability
