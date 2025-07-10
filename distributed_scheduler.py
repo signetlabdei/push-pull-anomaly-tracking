@@ -1,5 +1,4 @@
 import numpy as np
-import math
 import itertools
 
 class DistributedAnomalyScheduler:
@@ -13,7 +12,14 @@ class DistributedAnomalyScheduler:
     debug_mode = False
 
     def __init__(self, num_nodes, cluster_size, p_01, p_11, debug_mode):
-        """Constructor of the class"""
+        """Constructor of the class
+
+        :param num_nodes: number of nodes in the system :math:`N`
+        :param cluster_size: size of the cluster :math:`C`
+        :param p_01: initial probability :math:`U^{(i)}_{0,1}
+        :param p_11: initial probability :math:`U^{(i)}_{1,1}
+        :param debug_mode: boolean flag to enable debug mode`
+        """
         assert num_nodes % cluster_size == 0, "Number of nodes must be a multiple of the number of clusters"
         self.num_nodes = num_nodes                      # Number of nodes (N in the paper)
         self.cluster_size = cluster_size                # Clusters size (C in the paper)
@@ -93,7 +99,11 @@ class DistributedAnomalyScheduler:
             if cluster_risk[cluster_idx] >= cluster_risk_thr and free_resources >= self.cluster_size:
                 # Iterate by cluster
                 nodes = np.where(self.cluster_map == cluster_priority[cluster_idx])[0]
-                scheduled[-free_resources : -free_resources + self.cluster_size] = nodes
+                # Cases to avoid that array[-x:0] returns an empty array and break the code
+                if -free_resources + self.cluster_size == 0:
+                    scheduled[-free_resources:] = nodes
+                else:
+                    scheduled[-free_resources : -free_resources + self.cluster_size] = nodes
                 free_resources -= self.cluster_size
                 cluster_idx += 1
             else:
@@ -184,28 +194,31 @@ class DistributedAnomalyScheduler:
         return risk
 
     def __get_information(self, cluster: int, nodes: np.ndarray) -> float:
-        """Compute the a posteriori entropy over the observed nodes according to eq. (20)
+        r"""Compute the sum of the posteriori entropy times the belief :math:`\eta_k` according to eq. (21) (each line)
 
         :param cluster: int representing the cluster index
-        :param nodes: observed nodes in the cluster
-        :return: a posteriori entropy given the observed nodes in the cluster
+        :param nodes: array of the observed nodes index of the cluster
+        :return: summation of posteriori entropy times the belief $\eta_k$ over the observed nodes
         """
-        info = 0
+        info = 0.
+        if np.size(nodes) == 0:
+            return info
         # Find possible combinations of outcomes for scheduled nodes
-        patterns = list(itertools.product([0, 1], repeat=np.size(nodes)))
+        patterns = np.array(list(itertools.product([0, 1], repeat=np.size(nodes))))
         for pattern in patterns:
-            p_arr = np.asarray(pattern, dtype=int)
-            p_pattern = 0
-            p_anomaly = 0
+            p_pattern = 0.       # eq. (22) in the paper
+            p_anomaly = 0.       # argument of eq. (20) in the paper
             for state_ind in range(self.num_states):
                 # Check if the state matches the pattern
-                if np.dot(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes], 1 - p_arr) == 0:
+                # if np.dot(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes], 1 - p_arr) == 0:
+                if np.all(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes] == pattern):
                     p_pattern += self.state_pmf[state_ind, cluster]
                     # If the state is anomalous, increase the risk
-                    anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
-                    if anomaly >= self.cluster_size / 2:
+                    # anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
+                    if np.sum(self.index_to_cluster_state(state_ind, self.cluster_size)) >= self.cluster_size / 2:
+                    # if anomaly >= self.cluster_size / 2:
                         p_anomaly += self.state_pmf[state_ind, cluster]
-            if (p_pattern > 0):
+            if p_pattern > 0:
                 # Compute binary entropy over the conditional probability
                 risk = p_anomaly / p_pattern
                 # Law of total probability
