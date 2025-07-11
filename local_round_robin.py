@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-class LocalAnomalyScheduler:
+class LocalAnomalyRoundRobinScheduler:
     N = 0
     n = 0
 
@@ -9,11 +9,11 @@ class LocalAnomalyScheduler:
         self.N = N
         self.n = 0
 
-    def schedule(self, P, pull_sch):
-        scheduled = np.zeros(P)
+    def schedule(self, P, pull_sch=[]):
+        scheduled = np.zeros(P, dtype=int)
         for p in range(P):
-            while (n in pull_sch):
-                n = np.mod(n + 1, N)
-            scheduled[p] = n
-            n += 1
+            while (self.n in pull_sch):
+                self.n = np.mod(self.n + 1, self.N)
+            scheduled[p] = self.n
+            self.n = np.mod(self.n + 1, self.N)
         return scheduled
