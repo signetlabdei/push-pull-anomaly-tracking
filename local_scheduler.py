@@ -31,7 +31,10 @@ class LocalAnomalyScheduler:
             if(len(max_age_n) > 0):
                 max_ages [n] = max_age_n[-1]
         max_age = np.max(max_ages)
-        for threshold in np.arange(0, max_age - 1, 1):
+        p_coll = 0
+        threshold = max_age - 2
+        valid = False
+        while (p_coll < p_thr and threshold >= 0):
             act_prob = np.zeros(self.N)
             if (self.scheduler_type == 0):
                 for n in range(self.N):
@@ -44,8 +47,12 @@ class LocalAnomalyScheduler:
             if (self.debug_mode):
                 print('z',threshold,A,activation,coll)
             if (p_coll < p_thr):
-                return int(threshold)
-        return int(np.max([0, max_age - 2]))
+                valid = True
+            threshold -= 1
+        if (valid):
+            return int(threshold + 1)
+        else:
+            return int(np.max([0, max_age - 2]))
 
     def update_psi(self, threshold, outcome):
         if (self.scheduler_type == 0):

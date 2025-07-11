@@ -54,35 +54,46 @@ def main():
     nodes = 100
     max_age = 100
     M = 100     # S = 20
-    P = 10
-    T = int(1e4)
+    T = int(5e3)
     episodes = 10
     mode = 1
     debug_mode = False
 
     # Anomaly and algorithm parameters
-    rates = np.arange(0.01, 0.041, 0.03)
+    frame_sizes = np.arange(5, 21, 1)
+    rates = np.arange(0.01, 0.051, 0.01)
     p_c = 0.2
 
-    prob_avg = np.zeros((len(rates) + 1, len(frame_sizes)))
-    prob_95 = np.zeros((len(rates) + 1, len(frame_sizes)))
-    prob_99 = np.zeros((len(rates) + 1, len(frame_sizes)))
-    prob_999 = np.zeros((len(rates) + 1, len(frame_sizes)))
+    prob_avg = np.zeros((len(frame_sizes), len(rates) + 1))
+    prob_95 = np.zeros((len(frame_sizes), len(rates) + 1))
+    prob_99 = np.zeros((len(frame_sizes), len(rates) + 1))
+    prob_999 = np.zeros((len(frame_sizes), len(rates) + 1))
+
+    prob_avg[:, 0] = frame_sizes
+    prob_95[:, 0] = frame_sizes
+    prob_99[:, 0] = frame_sizes
+    prob_999[:, 0] = frame_sizes
 
     for pi in range(len(frame_sizes)):
+        P = frame_sizes[pi]
+        print('Frame size: ', P)
         for r in range(len(rates)):
             rate = rates[r]
             print('Rate: ', rate)
+            aoii_hist = np.zeros(M + 1)
             for ep in range(episodes):
                 print('Episode: ', ep)
-                aoii_hist = np.cumsum(run_episode(M, P, T, nodes, max_age, rate, p_c, mode, debug_mode)[0]) / episodes
-        aoii_hist[0, :] = np.arange(0, M + 1, 1)
+                aoii_hist += run_episode(M, P, T, nodes, max_age, rate, p_c, mode, debug_mode)[0] / episodes
+            aoii_cdf = np.cumsum(aoii_hist)
+            prob_95[pi, r + 1] = np.where(aoii_cdf > 0.95)[0][0]
+            prob_99[pi, r + 1] = np.where(aoii_cdf > 0.99)[0][0]
+            prob_999[pi, r + 1] = np.where(aoii_cdf > 0.999)[0][0]
+            prob_avg[pi, r + 1] = np.dot(aoii_hist, np.arange(0, M + 1, 1))
 
-
-    np.savetxt("push_frame_avg.csv", np.transpose(aoii_hist), delimiter=",")
-    np.savetxt("push_frame_95.csv", np.transpose(aoii_hist), delimiter=",")
-    np.savetxt("push_frame_99.csv", np.transpose(aoii_hist), delimiter=",")
-    np.savetxt("push_frame_999.csv", np.transpose(aoii_hist), delimiter=",")
+            np.savetxt("push_frame_avg.csv", prob_avg, delimiter=",")
+            np.savetxt("push_frame_95.csv", prob_95, delimiter=",")
+            np.savetxt("push_frame_99.csv", prob_99, delimiter=",")
+            np.savetxt("push_frame_999.csv", prob_999, delimiter=",")
 
 
 if __name__ == "__main__":
