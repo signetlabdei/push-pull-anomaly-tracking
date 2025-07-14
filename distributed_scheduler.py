@@ -122,11 +122,14 @@ class DistributedAnomalyScheduler:
                         else:
                             nodes = np.asarray([node_id], dtype=int)
                         # Compute the information gain
-                        node_priority[node] = (self.__get_information(self.cluster_map[node], prev) -
-                                               self.__get_information(self.cluster_map[node], nodes))
+                        info_prev = self.__get_information(self.cluster_map[node], prev)
+                        info_node = self.__get_information(self.cluster_map[node], nodes)
+                        node_priority[node] = info_prev - info_node
                 # Schedule the node with the highest priority
                 next_node = np.argmax(node_priority)
                 scheduled[-free_resources] = next_node
+                if self.debug_mode:
+                    print(node_priority)
                 # Reset priority value for all the nodes of the cluster of next_node
                 node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
                 free_resources -= 1
