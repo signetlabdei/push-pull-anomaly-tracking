@@ -8,6 +8,7 @@ from common import max_num_frame, Q_vec, risk_thr_vec, C, D, p_01, p_11, distrib
 # Simulation variables
 rng = np.random.default_rng(0)
 debug_mode = False
+overwrite = False
 data_folder = os.path.join(os.getcwd(), 'data')
 # Population
 cluster_size = C
@@ -18,6 +19,12 @@ for risk_thr in risk_thr_vec:
     for Q in Q_vec:
         ### Logging ###
         print(f"risk_thr={risk_thr:1.1f}, Q={Q:02d} status:")
+        filename = f'pull_results_riskth{risk_thr:0.1f}_Q{Q:02d}.npz'
+
+        # Check if results file exists
+        if not overwrite and os.path.exists(os.path.join(data_folder, filename)):
+            print("\tResults already exists, skipping.")
+            continue
 
         # Utility variables
         distributed_state = np.zeros(num_clustered_nodes)
@@ -73,4 +80,4 @@ for risk_thr in risk_thr_vec:
                 print('a', distributed_aoii[k, :])
                 input("Press Enter to continue...")
 
-        np.savez(os.path.join(data_folder, f'pull_results_riskth{risk_thr:0.1f}_Q{Q:02d}.npz'), distributed_anomaly, distributed_aoii)
+        np.savez(os.path.join(data_folder, filename), distributed_anomaly, distributed_aoii)
