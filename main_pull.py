@@ -66,7 +66,7 @@ for risk_thr in risk_thr_vec:
             ### POST-FRAME UPDATE ###
             # Distributed anomaly belief update
             successful = scheduled # Ignoring push
-            cluster_in_anomaly = dist_sched.update_state_pmf(successful, distributed_state[successful], distributed_detection)
+            cluster_in_anomaly = dist_sched.update_posterior_pmf(successful, distributed_state[successful], distributed_detection)
             # Reset state, anomaly and aoii for cluster where an anomaly was found
             for cluster in cluster_in_anomaly:
                 distributed_state[cluster_size * (cluster - 1): cluster_size * cluster] = 0
