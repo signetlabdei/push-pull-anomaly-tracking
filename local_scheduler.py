@@ -45,7 +45,7 @@ class LocalAnomalyScheduler:
                         act_prob[n] = np.sum(self.psi[n, int(threshold) + 1:])
             p_coll = self.__eval_threshold(P, act_prob)
             if (self.debug_mode):
-                print('z',threshold,A,activation,coll)
+                print('z',threshold, act_prob, p_coll)
             if (p_coll < p_thr):
                 valid = True
             threshold -= 1
