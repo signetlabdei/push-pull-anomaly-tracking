@@ -16,8 +16,11 @@ Q_vec = np.arange(5, S + S_step, S_step, dtype=int)
 P_vec = np.arange(5, S + S_step, S_step, dtype=int)
 
 # Anomaly parameters
-p_01 = 0.01
+# Distributed
 p_11 = 0.9
+p_01_base = np.array([0.001, 0.00704, 0.00725, 0.00750])
+multiplier = np.array([1., 1.508, 1.939, 2.332])
+absorption_rate = np.array([0.250, 0.500, 0.750, 1.000])    # anomalies/node/s related to the multiplier
 
 # Algorithm parameters
 distributed_detection = 0.95
