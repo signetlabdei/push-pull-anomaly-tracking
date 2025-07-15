@@ -1,5 +1,5 @@
 import numpy as np
-
+from common import C, frame_duration
 
 def index_to_cluster_state(idx, cluster_size) -> np.ndarray:
     """Translator from an index in the pmf to a cluster state.
@@ -24,8 +24,8 @@ def init_transition_matrix(cluster_size, p_01, p_11) -> np.ndarray:
 
     for state_ind in range(states):
         p = np.zeros((2,2))
-        p[1,0]=1-p_11
-        p[1,1]=p_11
+        p[1, 0] = 1 - p_11
+        p[1, 1] = p_11
         state = index_to_cluster_state(state_ind, cluster_size)
         anomalies = np.sum(state)
         # When an anomaly occurs, nodes in state 1 do not go back to state 0
@@ -47,7 +47,7 @@ def get_transient_matrix(transition_matrix, cluster_size):
     for state_ind in range(states):
         state = index_to_cluster_state(state_ind, cluster_size)
         anomalies = np.sum(state)
-        if (anomalies < cluster_size / 2):
+        if anomalies < cluster_size / 2:
             transient_states.append(state_ind)
     Q = np.zeros((len(transient_states), len(transient_states)))
     for ind in range(len(transient_states)):
@@ -65,10 +65,15 @@ def get_absorption_time(transition_matrix, cluster_size):
     return np.dot(N, np.ones(t))
 
 ### MAIN SCRIPT ###
-cluster_size = 4
-p_01 = [0.01, 0.06, 0.08, 0.13]
-p_11 = 0.9
+if __name__ == '__main__':
+    cluster_size = C
+    p_11 = 0.9
 
-transition_matrix = init_transition_matrix(cluster_size, p_01, p_11)
-T = get_absorption_time(transition_matrix, cluster_size)
-print('Absorption time from initialization:', T[0])
+    p_01_base = np.array([0.001, 0.00704, 0.00725, 0.00750])
+    multiplier = np.array([1., 1.508, 1.939, 2.332])
+    for mult in multiplier:
+        p_01 = mult * p_01_base
+        print(f'p_01: {np.round(p_01, 5)}')
+        transition_matrix = init_transition_matrix(cluster_size, p_01, p_11)
+        T = get_absorption_time(transition_matrix, cluster_size)
+        print(f'\tAbsorption rate: {1/T[0] / frame_duration:0.3f}')
