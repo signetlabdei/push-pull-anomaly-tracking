@@ -19,8 +19,10 @@ def run_episode(num_bins, cluster_size, num_cluster, max_num_frame, pull_res, p_
     :return:
     """
     # Instatiate scheduler
+    p_vec_01 = [0.01, 0.06, 0.08, 0.13]
+
     num_clustered_nodes = num_cluster * cluster_size   # The first clustered nodes have distributed anomalies
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_vec[0], p_vec[1], debug_mode)
+    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_vec_01, p_vec[1], debug_mode)
 
     # Utility variables
     distributed_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
@@ -35,6 +37,7 @@ def run_episode(num_bins, cluster_size, num_cluster, max_num_frame, pull_res, p_
         for node in range(num_clustered_nodes):
             cluster = dist_sched.cluster_map[node]
             p = p_vec[0]
+            p = p_vec_01[int(np.mod(node,4))]
             if distributed_state[node] == 1:
                 # Check if the anomaly is present
                 if np.sum(distributed_state[dist_sched.cluster_map == cluster]) >= cluster_size / 2:
@@ -64,6 +67,9 @@ def run_episode(num_bins, cluster_size, num_cluster, max_num_frame, pull_res, p_
         cluster_in_anomaly = dist_sched.update_state_pmf(successful,
                                                          distributed_state[successful],
                                                          detection_thr)
+        risk = np.zeros(num_cluster)
+        for cluster in range(num_cluster):
+            risk[cluster] = dist_sched.get_cluster_risk(cluster)
         # Reset state, anomaly and aoii for cluster where an anomaly was found
         for cluster in cluster_in_anomaly:
             distributed_state[dist_sched.cluster_map == cluster] = 0
@@ -72,9 +78,13 @@ def run_episode(num_bins, cluster_size, num_cluster, max_num_frame, pull_res, p_
 
         ### DEBUG ###
         if debug_mode:
+            print('s', scheduled)
+            print('o', distributed_state[successful])
             print('y', distributed_state)
+            print('r', risk)
             print('z', distributed_anomaly)
             print('a', distributed_aoii[k, :])
+
             input("Press Enter to continue...")
 
     distributed_aoii_tot = np.reshape(distributed_aoii, max_num_frame * num_cluster)
