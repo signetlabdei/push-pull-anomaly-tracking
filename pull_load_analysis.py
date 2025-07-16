@@ -73,9 +73,7 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
 
         ### DEBUG for visualization ###
         if debug_mode:
-            risk = np.zeros(num_cluster)
-            for cluster in range(num_cluster):
-                risk[cluster] = dist_sched.get_cluster_risk(cluster)
+            risk = dist_sched.get_cluster_risk
             print('s', scheduled)
             print('o', distributed_state[successful])
             print('y', distributed_state)

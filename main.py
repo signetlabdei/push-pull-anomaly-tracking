@@ -58,7 +58,7 @@ for t in range(T):
 
     ### SUBFRAME ALLOCATION ###
     local_risk = local_sched.get_risk(aoii_threshold)
-    dist_risk = dist_sched.get_risk()
+    dist_risk = dist_sched.get_average_risk
     # TODO outer loop: decide the values of P and Q
 
     ### PULL-BASED SUBFRAME ###
