@@ -242,7 +242,7 @@ class DistributedAnomalyScheduler:
         return info
 
     def __forward_rule(self, pmf, observation) -> np.ndarray:
-        """It applies the indicator function and the normalization of eq. (16) for the forward rule
+        """It applies eq. (17) for the forward rule
 
         :param pmf: 2^C times 1 np.ndarray representing the PMF of the state for a cluster
         :param observation: observation vector for the nodes in the cluster under consideration
@@ -253,14 +253,15 @@ class DistributedAnomalyScheduler:
         # If observation are all "no transmission" nothing to do here
         if missing == self.cluster_size:
             return pmf
-        # Check for each possible state
-        for state_idx in range(self.num_states):
-            # Convert index of the state to the state of each user
-            state = self.states[state_idx]
-            # Check each node
-            for n in range(self.cluster_size):
-                if observation[n] >= 0 and observation[n] != state[n]:
-                    pmf[state_idx] = 0
+        # Check if any of the observation is different from the current state, this state is not possible
+        # excluding the missing observation, i.e., where observation == -1
+        incompatible_idx = np.any(np.logical_and(np.tile(observation >= 0, (self.num_states, 1)),
+                                                 observation != self.states), axis = 1)
+        pmf[incompatible_idx] = 0
+        # For loop DEPRECATED
+        # for state_idx in range(self.num_states):
+        #     if np.any(np.logical_and(observation >= 0, observation != self.states[state_idx])):
+        #         pmf[state_idx] = 0
         pmf /= np.sum(pmf)
         return pmf
 
