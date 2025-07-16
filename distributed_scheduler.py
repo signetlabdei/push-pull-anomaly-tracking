@@ -128,8 +128,10 @@ class DistributedAnomalyScheduler:
                     if node not in scheduled and node_priority[node] < 0:
                         # Check whether the node can be scheduled
                         cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
-                        prev = np.intersect1d(cluster_nodes, scheduled) - self.cluster_map[node] * self.cluster_size
-                        node_id = node - self.cluster_map[node] * self.cluster_size
+                        # Take nodes of the cluster already scheduled (if any) and perform a mod(x, self.cluster_size) (needed for get_information)
+                        prev = np.remainder(np.intersect1d(cluster_nodes, scheduled), self.cluster_size)
+                        # Take the node_id and perform a mod(x, self.cluster_size) (needed for get_information)
+                        node_id = np.remainder(node, self.cluster_size)
                         # Find previously scheduled nodes in the same cluster
                         if np.size(cluster_nodes) > 0:
                             nodes = np.append(prev, node_id)
@@ -171,7 +173,7 @@ class DistributedAnomalyScheduler:
                 sched = np.where(scheduled == node)[0]
                 if len(sched) > 0:
                     cluster_obs[n] = observations[sched]
-            # Apply indicator function and normalization given the observed values and update the PMF
+            # Apply posterior information over the PMF
             self.state_pmf[:, cluster] = self.__forward_rule(self.state_pmf[:, cluster], cluster_obs)
 
             # Reset distributed state if an anomaly is identified
@@ -207,17 +209,11 @@ class DistributedAnomalyScheduler:
         :param nodes: array of the observed nodes of the cluster having a relative index from 0 to cluster_size
         :return: summation of posteriori entropy times the belief :math:`\eta_k` over the observed nodes
         """
-        # If nodes is empty compute the a posteriori entropy over all the nodes. Belief \eta_k is 1 in this case
+        # If nodes is empty compute the a posteriori entropy over all the nodes of the cluster.
+        # Belief \eta_k is 1 in this case
         if np.size(nodes) == 0:
-            # for loop version
-            # p_anomaly = 0.
-            # for state_ind in range(self.num_states):
-            #     if np.sum(self.index_to_cluster_state(state_ind, self.cluster_size)) >= self.cluster_size / 2:
-            #             p_anomaly += self.state_pmf[state_ind, cluster]
-            # info = self.binary_entropy([1 - p_anomaly, p_anomaly])
-            # Vectorial version
-            states = np.array(list(itertools.product([0, 1], repeat=self.cluster_size)))
-            p_anomaly = np.sum(self.state_pmf[np.sum(states, axis=1) >= self.cluster_size / 2, cluster])
+            # Get the risk of the cluster itself
+            p_anomaly = self.get_cluster_risk[cluster]
             info = self.binary_entropy([1 - p_anomaly, p_anomaly])
             return info
         # If nodes is not empty compute the equation on the set of possible observation
@@ -225,17 +221,24 @@ class DistributedAnomalyScheduler:
         # Find possible combinations of outcomes for scheduled nodes
         patterns = np.array(list(itertools.product([0, 1], repeat=np.size(nodes))))
         for pattern in patterns:
-            p_pattern = 0.       # \eta_k eq. (21) in the paper
-            p_anomaly = 0.       # numerator of argument in eq. (20) in the paper
-            for state_idx in range(self.num_states):
-                # Check if the state matches the pattern
-                if np.all(self.states[state_idx, nodes] == pattern):
-                    p_pattern += self.state_pmf[state_idx, cluster]
-                    # If the state is anomalous, increase the risk
-                    if np.sum(self.states[state_idx]) >= self.cluster_size / 2:
-                        p_anomaly += self.state_pmf[state_idx, cluster]
+            # Check which states match the patter
+            state_matched_bool = np.all(self.states[:, nodes] == pattern, axis=1)
+            # Sum the PMFs of the states matching the pattern
+            p_pattern = np.sum(self.state_pmf[state_matched_bool, cluster])   # \eta_k eq. (22) in the paper
+            # Increase the risk of for any anomalous states (numerator of argument in eq. (21) in the paper)
+            p_anomaly = np.sum(self.state_pmf[np.logical_and(state_matched_bool, self.anomalous_states), cluster])
+            # # For loop version DEPRECATED
+            # p_pattern = 0.  # \eta_k eq. (22) in the paper
+            # p_anomaly = 0.  # numerator of argument in eq. (21) in the paper
+            # for state_idx in range(self.num_states):
+            #     # Check if the state matches the pattern
+            #     if np.all(self.states[state_idx, nodes] == pattern):
+            #         p_pattern += self.state_pmf[state_idx, cluster]
+            #         # If the state is anomalous, increase the risk
+            #         if self.anomalous_states[state_idx]:
+            #             p_anomaly += self.state_pmf[state_idx, cluster]
             if p_pattern > 0:
-                # Compute binary entropy over the conditional probability
+                # Compute binary entropy over the conditional probability, i.e., argument of (21)
                 risk = p_anomaly / p_pattern
                 # Law of total probability
                 info += p_pattern * self.binary_entropy([1 - risk, risk])
