@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler
-from common import Q_vec, risk_thr_vec, C, D, p_01_base, multiplier, p_11, distributed_detection, std_bar
+from common import Q_vec, risk_thr_vec, C, D, p_01_qhet, multiplier, p_11, distributed_detection, std_bar, pull_folder
 
 
 def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
@@ -93,15 +94,13 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
 
 
 if __name__ == '__main__':
-    # Save values
-    data_folder = os.path.join(os.getcwd(), 'data', 'pull_only')
-
     # Simulation variables
+    dec = 6
     M = 100
-    T = int(1e4)
-    episodes = 10
+    T = int(1e2)
+    episodes = 1
     rng = np.random.default_rng(0)
-    p_01 = p_01_base * multiplier[1]
+    p_01 = p_01_qhet * multiplier[2]
 
     debug_mode = False
     overwrite = False
@@ -110,25 +109,47 @@ if __name__ == '__main__':
     cluster_size = C
     num_cluster = D
 
-    prob_avg = np.zeros((len(Q_vec), len(risk_thr_vec)))
-    prob_99 = np.zeros((len(Q_vec), len(risk_thr_vec)))
-    prob_999 = np.zeros((len(Q_vec), len(risk_thr_vec)))
+    # Check if files exist and load it if there
+    prefix = 'pull_frame'
+    filename_avg = os.path.join(pull_folder, prefix + '_avg.csv')
+    filename_99 = os.path.join(pull_folder, prefix + '_99.csv')
+    filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
+
+    if os.path.exists(filename_avg) and not overwrite:
+        prob_avg = pd.read_csv(filename_avg, header=None).iloc[:, 1:].to_numpy()
+    else:
+        prob_avg = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
+    if os.path.exists(filename_99) and not overwrite:
+        prob_99 = pd.read_csv(filename_99, header=None).iloc[:, 1:].to_numpy()
+    else:
+        prob_99 = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
+    if os.path.exists(filename_999) and not overwrite:
+        prob_999 = pd.read_csv(filename_999, header=None).iloc[:, 1:].to_numpy()
+    else:
+        prob_999 = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
 
     for r, risk_thr in enumerate(risk_thr_vec):
         for q, Q in enumerate(Q_vec):
             ### Logging ###
-            print(f"risk_thr={risk_thr:1.1f}, Q={Q:02d} status:")
+            print(f"risk_thr={risk_thr:1.1f}, Q={Q:02d}. Status:")
 
-            dist_aoii_hist = np.zeros(M + 1)
-            for ep in range(episodes):
-                print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
-                dist_aoii_hist += run_episode(M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, distributed_detection, debug_mode)[0] / episodes
-            dist_aoii_cdf = np.cumsum(dist_aoii_hist)
-            prob_99[q, r] = np.where(dist_aoii_cdf > 0.99)[0][0]
-            prob_999[q, r] = np.where(dist_aoii_cdf > 0.999)[0][0]
-            prob_avg[q, r] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
+            # Check if data is there
 
+            if overwrite or np.isnan(prob_avg[q, r]):
+                dist_aoii_hist = np.zeros(M + 1)
+                for ep in range(episodes):
+                    print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
+                    dist_aoii_hist += run_episode(M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, distributed_detection, debug_mode)[0] / episodes
+                dist_aoii_cdf = np.cumsum(dist_aoii_hist)
+                prob_99[q, r] = np.where(dist_aoii_cdf > 0.99)[0][0]
+                prob_999[q, r] = np.where(dist_aoii_cdf > 0.999)[0][0]
+                prob_avg[q, r] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
 
-            np.savetxt(os.path.join(data_folder, "pull_risk_avg.csv"), prob_avg, delimiter=",")
-            np.savetxt(os.path.join(data_folder, "pull_risk_99.csv"), prob_99, delimiter=",")
-            np.savetxt(os.path.join(data_folder, "pull_risk_999.csv"), prob_999, delimiter=",")
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
+                    df = pd.DataFrame(res.round(dec), columns=risk_thr_vec)
+                    df.insert(0, 'Q', Q_vec)
+                    df.to_csv(file, index=False)
+            else:
+                print("\t...already done!")
+                continue
