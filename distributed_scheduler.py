@@ -7,6 +7,8 @@ class DistributedAnomalyScheduler:
     num_clusters = 0
     cluster_map = []
     num_states = 2 ** cluster_size
+    states = np.zeros((num_states, cluster_size), dtype=int)
+    anomalous_states = np.zeros(num_states, dtype=bool)
     state_pmf = []
     transition_matrix = []
     debug_mode = False
@@ -28,8 +30,14 @@ class DistributedAnomalyScheduler:
         self.observations = np.zeros(num_nodes, dtype=int)          # o_n in the paper
         # The pmf is a 2^C vector per cluster denoting the probability of a particular state_distributed
         self.num_states = 2 ** cluster_size             # number of possible states for the state pmf
+        # Representing the states as a binary mapping ([0000] [0001] etc...)
+        self.states = np.array(list(itertools.product([0, 1], repeat=self.cluster_size)), dtype=int)
+        # Boolean vector indicating which states are anomalous
+        self.anomalous_states = np.sum(self.states, axis=1) >= self.cluster_size / 2
+        # Initialize the pmf over the possible states
         self.state_pmf = self.init_state_pmf()          # \zeta in the paper
         self.transition_matrix = self.init_transition_matrix(p_01, p_11)    # U in the paper
+        # Debug
         self.debug_mode = debug_mode
 
     def init_cluster_map(self):
@@ -61,35 +69,20 @@ class DistributedAnomalyScheduler:
         :return: 2^C times 2^C transition matrix (U in the paper)
         """
         transition_matrix = np.ones((self.num_states, self.num_states))
-        # for state_ind in range(self.num_states):
-        #     p = np.asarray([[1 - p_01, p_01], [1 - p_11, p_11]])
-        #     state = self.index_to_cluster_state(state_ind, self.cluster_size)
-        #     anomalies = np.sum(state)
-        #     # When an anomaly occurs, nodes in state 1 do not go back to state 0
-        #     if anomalies >= self.cluster_size / 2:
-        #         p[1, 0] = 0
-        #         p[1, 1] = 1
-        #     for next_state_ind in range(self.num_states):
-        #         next_state = self.index_to_cluster_state(next_state_ind, self.cluster_size)
-        #         transition_matrix[state_ind, next_state_ind] = np.prod(p[state, next_state])
-
-        for state_ind in range(self.num_states):
+        for state_idx in range(self.num_states):
             p = np.zeros((2,2))
-            p[1,0]=1-p_11
-            p[1,1]=p_11
-            state = self.index_to_cluster_state(state_ind, self.cluster_size)
-            anomalies = np.sum(state)
+            p[1, 0]= 1 - p_11
+            p[1, 1] = p_11
             # When an anomaly occurs, nodes in state 1 do not go back to state 0
-            if anomalies >= self.cluster_size / 2:
-                p[1,0] = 0
-                p[1,1] = 1
-            for next_state_ind in range(self.num_states):
-                next_state = self.index_to_cluster_state(next_state_ind, self.cluster_size)
+            if np.sum(self.states[state_idx]) >= self.cluster_size / 2:
+                p[1, 0] = 0
+                p[1, 1] = 1
+            for next_state_idx in range(self.num_states):
+                next_state = self.states[next_state_idx]
                 for s in range(self.cluster_size):
-                    p[0,1] = p_01[s]
-                    p[0,0] = 1 - p_01[s]
-                    transition_matrix[state_ind, next_state_ind] *= p[state[s], next_state[s]]
-
+                    p[0, 1] = p_01[s]
+                    p[0, 0] = 1 - p_01[s]
+                    transition_matrix[state_idx, next_state_idx] *= p[self.states[state_idx, s], next_state[s]]
         return transition_matrix
 
 
@@ -102,13 +95,12 @@ class DistributedAnomalyScheduler:
 
         :return: np.ndarray of ints representing the indexes of scheduled nodes
         """
-        # A priori probability: update PMF for every cluster
+        # A priori probability: update prior PMF for every cluster
         for cluster in range(self.num_clusters):
             self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
 
-        cluster_risk = np.zeros(self.num_clusters)
-        for cluster in range(self.num_clusters):
-            cluster_risk[cluster] = self.get_cluster_risk(cluster)
+        # Get cluster risk with the new prior pmf
+        cluster_risk = self.get_cluster_risk
         # Cluster-based scheduler: sort clusters by risk, then fill
         cluster_priority = np.argsort(-cluster_risk)
         node_priority = -np.ones(self.num_nodes)
@@ -117,12 +109,11 @@ class DistributedAnomalyScheduler:
         scheduled = -np.ones(pull_resources, dtype=int)
         # Start iterating until the resources are full
         while free_resources > 0:
-            print(free_resources)
             # Check if there are high-risk clusters and if there is space to schedule their nodes
             if cluster_risk[cluster_priority[cluster_idx]] >= cluster_risk_thr and free_resources >= self.cluster_size:
                 # Iterate by cluster
                 nodes = np.where(self.cluster_map == cluster_priority[cluster_idx])[0]
-                # Cases to avoid that array[-x:0] returns an empty array and break the code
+                # Cases to avoid that array[-x:0] returns an empty array and breaks the code
                 if -free_resources + self.cluster_size == 0:
                     scheduled[-free_resources:] = nodes
                 else:
@@ -137,8 +128,10 @@ class DistributedAnomalyScheduler:
                     if node not in scheduled and node_priority[node] < 0:
                         # Check whether the node can be scheduled
                         cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
-                        prev = np.intersect1d(cluster_nodes, scheduled) - self.cluster_map[node] * self.cluster_size
-                        node_id = node - self.cluster_map[node] * self.cluster_size
+                        # Take nodes of the cluster already scheduled (if any) and perform a mod(x, self.cluster_size) (needed for get_information)
+                        prev = np.remainder(np.intersect1d(cluster_nodes, scheduled), self.cluster_size)
+                        # Take the node_id and perform a mod(x, self.cluster_size) (needed for get_information)
+                        node_id = np.remainder(node, self.cluster_size)
                         # Find previously scheduled nodes in the same cluster
                         if np.size(cluster_nodes) > 0:
                             nodes = np.append(prev, node_id)
@@ -147,22 +140,21 @@ class DistributedAnomalyScheduler:
                         # Compute the information gain
                         info_prev = self.__get_information(self.cluster_map[node], prev)
                         info_node = self.__get_information(self.cluster_map[node], nodes)
-                        # print('p',prev,nodes,info_prev,info_node)
                         node_priority[node] = info_prev - info_node
                 # Schedule the node with the highest priority
                 next_node = np.argmax(node_priority)
                 scheduled[-free_resources] = next_node
-                if self.debug_mode:
-                    print(node_priority)
                 # Reset priority value for all the nodes of the cluster of next_node
                 node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
                 free_resources -= 1
+                if self.debug_mode:
+                    print(node_priority)
         return scheduled
 
-    def update_state_pmf(self,
-                         scheduled: list or np.ndarray,
-                         observations: np.ndarray,
-                         detection_threshold: float) -> list:
+    def update_posterior_pmf(self,
+                             scheduled: list or np.ndarray,
+                             observations: np.ndarray,
+                             detection_threshold: float) -> list:
         """Update map_pmf according to (16)
 
         :param scheduled: list of ints, index of nodes scheduled in the current frame
@@ -173,7 +165,6 @@ class DistributedAnomalyScheduler:
         # Initialize a list containing the cluster in anomaly
         clusters_in_anomaly = []
         for cluster in range(self.num_clusters):
-
             # A posteriori probability: consider observation
             cluster_obs = -np.ones(self.cluster_size)
             cluster_ind = np.where(self.cluster_map == cluster)[0]
@@ -182,11 +173,11 @@ class DistributedAnomalyScheduler:
                 sched = np.where(scheduled == node)[0]
                 if len(sched) > 0:
                     cluster_obs[n] = observations[sched]
-            # Apply indicator function and normalization given the observed values and update the PMF
+            # Apply posterior information over the PMF
             self.state_pmf[:, cluster] = self.__forward_rule(self.state_pmf[:, cluster], cluster_obs)
 
             # Reset distributed state if an anomaly is identified
-            risk_anomaly = self.get_cluster_risk(cluster)
+            risk_anomaly = self.get_cluster_risk[cluster]
             # if the probability of the anomaly is higher than the threshold, the anomaly is recognized
             # Thus, we reset the state and the PMF
             if risk_anomaly >= detection_threshold:
@@ -194,66 +185,67 @@ class DistributedAnomalyScheduler:
                 clusters_in_anomaly.append(cluster)
         return clusters_in_anomaly
 
-    def get_risk(self) -> float:
+    @property
+    def get_average_risk(self) -> float:
         """Compute the average risk of the clusters
 
         :return: float being the average of the clusters' risk
         """
-        total_risk = 0.
-        for cluster in range(self.num_clusters):
-            total_risk += self.get_cluster_risk(cluster)
-        return total_risk / self.num_clusters
+        return self.get_cluster_risk.mean()
 
-    def get_cluster_risk(self, cluster: int) -> float:
-        """Compute the risk of a cluster according to (17)
+    @property
+    def get_cluster_risk(self) -> np.ndarray:
+        """Compute the risk for all clusters according to (17)
 
-        :param cluster: int representing the cluster index
-        :return: float, cluster risk (belief) (17)
+        :return: np.ndarray D times 1, cluster risk (belief) (17) per cluster
         """
-        risk = 0
-        # Check for all states
-        for state_ind in range(self.num_states):
-            anomaly = np.sum(np.array(list(np.binary_repr(state_ind)), dtype=int))
-            if anomaly >= self.cluster_size / 2:
-                risk += self.state_pmf[state_ind, cluster]
-        return risk
+        return np.sum(self.state_pmf[self.anomalous_states], axis=0)
+
 
     def __get_information(self, cluster: int, nodes: np.ndarray) -> float:
-        r"""Compute the sum of the posteriori entropy times the belief :math:`\eta_k` according to eq. (21) (each line)
+        r"""Compute the sum of the a posteriori entropy times the belief :math:`\eta_k` according to eq. (21) (each line)
 
         :param cluster: int representing the cluster index
-        :param nodes: array of the observed nodes index of the cluster
-        :return: summation of posteriori entropy times the belief $\eta_k$ over the observed nodes
+        :param nodes: array of the observed nodes of the cluster having a relative index from 0 to cluster_size
+        :return: summation of posteriori entropy times the belief :math:`\eta_k` over the observed nodes
         """
-        info = 0.
+        # If nodes is empty compute the a posteriori entropy over all the nodes of the cluster.
+        # Belief \eta_k is 1 in this case
         if np.size(nodes) == 0:
-            p_anomaly = 0.
-            for state_ind in range(self.num_states):
-                if np.sum(self.index_to_cluster_state(state_ind, self.cluster_size)) >= self.cluster_size / 2:
-                        p_anomaly += self.state_pmf[state_ind, cluster]
+            # Get the risk of the cluster itself
+            p_anomaly = self.get_cluster_risk[cluster]
             info = self.binary_entropy([1 - p_anomaly, p_anomaly])
             return info
+        # If nodes is not empty compute the equation on the set of possible observation
+        info = 0.
         # Find possible combinations of outcomes for scheduled nodes
         patterns = np.array(list(itertools.product([0, 1], repeat=np.size(nodes))))
         for pattern in patterns:
-            p_pattern = 0.       # \eta_k eq. (21) in the paper
-            p_anomaly = 0.       # numerator of argument in eq. (20) in the paper
-            for state_ind in range(self.num_states):
-                # Check if the state matches the pattern
-                if np.all(self.index_to_cluster_state(state_ind, self.cluster_size)[nodes] == pattern):
-                    p_pattern += self.state_pmf[state_ind, cluster]
-                    # If the state is anomalous, increase the risk
-                    if np.sum(self.index_to_cluster_state(state_ind, self.cluster_size)) >= self.cluster_size / 2:
-                        p_anomaly += self.state_pmf[state_ind, cluster]
+            # Check which states match the patter
+            state_matched_bool = np.all(self.states[:, nodes] == pattern, axis=1)
+            # Sum the PMFs of the states matching the pattern
+            p_pattern = np.sum(self.state_pmf[state_matched_bool, cluster])   # \eta_k eq. (22) in the paper
+            # Increase the risk of for any anomalous states (numerator of argument in eq. (21) in the paper)
+            p_anomaly = np.sum(self.state_pmf[np.logical_and(state_matched_bool, self.anomalous_states), cluster])
+            # # For loop version DEPRECATED
+            # p_pattern = 0.  # \eta_k eq. (22) in the paper
+            # p_anomaly = 0.  # numerator of argument in eq. (21) in the paper
+            # for state_idx in range(self.num_states):
+            #     # Check if the state matches the pattern
+            #     if np.all(self.states[state_idx, nodes] == pattern):
+            #         p_pattern += self.state_pmf[state_idx, cluster]
+            #         # If the state is anomalous, increase the risk
+            #         if self.anomalous_states[state_idx]:
+            #             p_anomaly += self.state_pmf[state_idx, cluster]
             if p_pattern > 0:
-                # Compute binary entropy over the conditional probability
+                # Compute binary entropy over the conditional probability, i.e., argument of (21)
                 risk = p_anomaly / p_pattern
                 # Law of total probability
                 info += p_pattern * self.binary_entropy([1 - risk, risk])
         return info
 
     def __forward_rule(self, pmf, observation) -> np.ndarray:
-        """It applies the indicator function and the normalization of eq. (16) for the forward rule
+        """It applies eq. (17) for the forward rule
 
         :param pmf: 2^C times 1 np.ndarray representing the PMF of the state for a cluster
         :param observation: observation vector for the nodes in the cluster under consideration
@@ -264,14 +256,15 @@ class DistributedAnomalyScheduler:
         # If observation are all "no transmission" nothing to do here
         if missing == self.cluster_size:
             return pmf
-        # Check for each possible state
-        for state_ind in range(self.num_states):
-            # Convert index of the state to the state of each user
-            state = self.index_to_cluster_state(state_ind, self.cluster_size)
-            # Check each node
-            for n in range(self.cluster_size):
-                if observation[n] >= 0 and observation[n] != state[n]:
-                    pmf[state_ind] = 0
+        # Check if any of the observation is different from the current state, this state is not possible
+        # excluding the missing observation, i.e., where observation == -1
+        incompatible_idx = np.any(np.logical_and(np.tile(observation >= 0, (self.num_states, 1)),
+                                                 observation != self.states), axis = 1)
+        pmf[incompatible_idx] = 0
+        # For loop DEPRECATED
+        # for state_idx in range(self.num_states):
+        #     if np.any(np.logical_and(observation >= 0, observation != self.states[state_idx])):
+        #         pmf[state_idx] = 0
         pmf /= np.sum(pmf)
         return pmf
 
@@ -310,3 +303,26 @@ class DistributedAnomalyScheduler:
         else:
             return -np.dot(np.log2(prob_vector), prob_vector)
 
+
+class DistributedRoundRobin(DistributedAnomalyScheduler):
+    def schedule(self, pull_resources: int, frame_num: int) -> np.ndarray:
+        # A priori probability: update prior PMF for every cluster
+        for cluster in range(self.num_clusters):
+            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+
+        # Stupid scheduler
+        start = pull_resources * frame_num
+        end = start + pull_resources
+        scheduled = np.arange(start, end) % self.num_nodes
+        return scheduled
+
+
+class DistributedRandom(DistributedAnomalyScheduler):
+    def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
+        # A priori probability: update prior PMF for every cluster
+        for cluster in range(self.num_clusters):
+            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+
+        # Stupid scheduler
+        scheduled = np.random.choice(np.arange(self.num_nodes), size=pull_resources, replace=False)
+        return scheduled

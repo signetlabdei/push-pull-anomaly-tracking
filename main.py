@@ -58,7 +58,7 @@ for t in range(T):
 
     ### SUBFRAME ALLOCATION ###
     local_risk = local_sched.get_risk(aoii_threshold)
-    dist_risk = dist_sched.get_risk()
+    dist_risk = dist_sched.get_average_risk
     # TODO outer loop: decide the values of P and Q
 
     ### PULL-BASED SUBFRAME ###
@@ -92,7 +92,7 @@ for t in range(T):
     # Local and distributed anomaly belief update
     local_sched.update_psi(threshold, outcome)
     successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
-    cluster_in_anomaly = dist_sched.update_state_pmf(successful, distributed_state[successful], distributed_detection)
+    cluster_in_anomaly = dist_sched.update_posterior_pmf(successful, distributed_state[successful], distributed_detection)
     # Reset state for cluster where an anomaly was found
     for cluster in cluster_in_anomaly:
         distributed_state[distributed_cluster_size * (cluster - 1): distributed_cluster_size * cluster] = 0
