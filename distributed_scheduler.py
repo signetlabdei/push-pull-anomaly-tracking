@@ -303,3 +303,26 @@ class DistributedAnomalyScheduler:
         else:
             return -np.dot(np.log2(prob_vector), prob_vector)
 
+
+class DistributedRoundRobin(DistributedAnomalyScheduler):
+    def schedule(self, pull_resources: int, frame_num: int) -> np.ndarray:
+        # A priori probability: update prior PMF for every cluster
+        for cluster in range(self.num_clusters):
+            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+
+        # Stupid scheduler
+        start = pull_resources * frame_num
+        end = start + pull_resources
+        scheduled = np.arange(start, end) % self.num_nodes
+        return scheduled
+
+
+class DistributedRandom(DistributedAnomalyScheduler):
+    def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
+        # A priori probability: update prior PMF for every cluster
+        for cluster in range(self.num_clusters):
+            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+
+        # Stupid scheduler
+        scheduled = np.random.choice(np.arange(self.num_nodes), size=pull_resources, replace=False)
+        return scheduled
