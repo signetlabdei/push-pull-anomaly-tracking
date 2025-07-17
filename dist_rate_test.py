@@ -66,9 +66,9 @@ def get_absorption_time(transition_matrix, cluster_size):
 
 ### MAIN SCRIPT ###
 cluster_size = 4
-p_01 = [0.01, 0.06, 0.08, 0.13]
+p_01 = np.asarray([0.001, 0.00704, 0.00725, 0.0075])*2.33
 p_11 = 0.9
 
 transition_matrix = init_transition_matrix(cluster_size, p_01, p_11)
 T = get_absorption_time(transition_matrix, cluster_size)
-print('Absorption time from initialization:', T[0])
+print('Absorption time from initialization:', 1/T[0])
