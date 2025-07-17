@@ -1,11 +1,13 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 import os
-from distributed_scheduler import DistributedAnomalyScheduler
-from common import risk_thr_vec, C, D, p_01_base, multiplier, p_11, distributed_detection, std_bar, absorption_rate
+from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom
+from common import C, D, p_01_diff, multiplier, p_11, distributed_detection, std_bar, absorption_rate, dist_schedulers, pull_folder
 
 
-def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
+
+def run_episode(sched_type: int,
+                num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
                 pull_res: int, p_01_vec: np.array or list, p_11: float,
                 risk_thr: float, detection_thr: float, debug_mode: bool):
     """ Generate a single episode
@@ -25,7 +27,18 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
     assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
 
     num_clustered_nodes = num_cluster * cluster_size   # The first clustered nodes have distributed anomalies
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+    if sched_type == 0:
+        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+    elif sched_type == 1:
+        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+        risk_thr = 0.
+    elif sched_type == 2:
+        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+        risk_thr = 1.
+    elif sched_type == 3:
+        dist_sched = DistributedRoundRobin(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+    elif sched_type == 4:
+        dist_sched = DistributedRandom(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
 
     # Utility variables
     distributed_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
@@ -62,7 +75,10 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
 
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
-        scheduled = dist_sched.schedule(pull_res, risk_thr)
+        if sched_type != 3:
+            scheduled = dist_sched.schedule(pull_res, risk_thr)
+        else:
+            scheduled = dist_sched.schedule(pull_res, k)
 
         ### POST-FRAME UPDATE ###
         # Distributed anomaly belief update
@@ -93,45 +109,87 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
 
 
 if __name__ == '__main__':
-    # Save values
-    data_folder = os.path.join(os.getcwd(), 'data', 'pull_only')
-
     # Simulation variables
-    M = 100
+    dec = 6
+    M = 200
     T = int(1e4)
     episodes = 10
     rng = np.random.default_rng(0)
-    p_01 = p_01_base * multiplier[1]
+    schedulers = dist_schedulers
 
     debug_mode = False
-    overwrite = False
+    overwrite = True
 
     # Population
     cluster_size = C
     num_cluster = D
-    Q_vec = [10, 20]
+
+    # Parameters
+    Q = 10
     risk_thr = 0.5
 
-    prob_avg = np.zeros((len(Q_vec), len(risk_thr_vec)))
-    prob_99 = np.zeros((len(Q_vec), len(risk_thr_vec)))
-    prob_999 = np.zeros((len(Q_vec), len(risk_thr_vec)))
+    # Check if files exist and load it if there
+    prefix = 'pull_load'
+    filename_avg = os.path.join(pull_folder, prefix + '_avg.csv')
+    filename_99 = os.path.join(pull_folder, prefix + '_99.csv')
+    filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
+    filename_cdf = os.path.join(pull_folder, prefix + '_cdf.csv')
 
-    for m, mult in enumerate(multiplier):
-        for q, Q in enumerate(Q_vec):
-            p_01 = p_01_base * mult
+    if os.path.exists(filename_avg) and not overwrite:
+        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
+    else:
+        prob_avg = np.full((len(schedulers), len(multiplier)), np.nan)
+    if os.path.exists(filename_99) and not overwrite:
+        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
+    else:
+        prob_99 = np.full((len(schedulers), len(multiplier)), np.nan)
+    if os.path.exists(filename_999) and not overwrite:
+        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
+    else:
+        prob_999 = np.full((len(schedulers), len(multiplier)), np.nan)
+    if os.path.exists(filename_cdf) and not overwrite:
+        cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy()
+    else:
+        cdf = np.full((len(multiplier), M + 1), np.nan)
+
+    for s, _ in enumerate(schedulers):
+        for m, mult in enumerate(multiplier):
+            p_01 = p_01_diff * mult
             ### Logging ###
-            print(f"load={absorption_rate[m]:1.3f}, Q={Q:02d} status:")
+            print(f"load={absorption_rate[m]:1.3f}, sched={schedulers[s]} status:")
 
-            dist_aoii_hist = np.zeros(M + 1)
-            for ep in range(episodes):
-                print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
-                dist_aoii_hist += run_episode(M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, distributed_detection, debug_mode)[0] / episodes
-            dist_aoii_cdf = np.cumsum(dist_aoii_hist)
-            prob_99[q, m] = np.where(dist_aoii_cdf > 0.99)[0][0]
-            prob_999[q, m] = np.where(dist_aoii_cdf > 0.999)[0][0]
-            prob_avg[q, m] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
+            # Check if data is there
+            if overwrite or np.isnan(prob_avg[m, s]):
+                dist_aoii_hist = np.zeros(M + 1)
+                for ep in range(episodes):
+                    print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
+                    dist_aoii_hist += run_episode(s, M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, distributed_detection, debug_mode)[0] / episodes
+                dist_aoii_cdf = np.cumsum(dist_aoii_hist)
+                prob_99[s, m] = np.where(dist_aoii_cdf > 0.99)[0][0]
+                prob_999[s, m] = np.where(dist_aoii_cdf > 0.999)[0][0]
+                prob_avg[s, m] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
+                # Save CDF for the PPS-0.5 only
+                if s == 0:
+                    cdf[m] = dist_aoii_cdf
 
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                prob_avg_df = pd.DataFrame(prob_avg.T.round(dec), columns=schedulers)
+                prob_avg_df.insert(0, 'abs_rate', absorption_rate)
+                prob_avg_df.to_csv(filename_avg, index=False)
 
-            np.savetxt(os.path.join(data_folder, "pull_load_avg.csv"), prob_avg, delimiter=",")
-            np.savetxt(os.path.join(data_folder, "pull_load_99.csv"), prob_99, delimiter=",")
-            np.savetxt(os.path.join(data_folder, "pull_load_999.csv"), prob_999, delimiter=",")
+                prob_99_df = pd.DataFrame(prob_99.T.round(dec), columns=schedulers)
+                prob_99_df.insert(0, 'abs_rate', absorption_rate)
+                prob_99_df.to_csv(filename_99, index=False)
+
+                prob_999_df = pd.DataFrame(prob_999.T.round(dec), columns=schedulers)
+                prob_999_df.insert(0, 'abs_rate', absorption_rate)
+                prob_999_df.to_csv(filename_999, index=False)
+
+                if s == 0:
+                    cdf_df = pd.DataFrame(cdf.T, columns=absorption_rate)
+                    cdf_df.insert(0, 'Psi', np.arange(M + 1))
+                    cdf_df.to_csv(filename_cdf, index=False)
+
+            else:
+                print("\t...already done!")
+                continue
