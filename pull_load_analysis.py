@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom
-from common import C, D, p_01_diff, multiplier, p_11, distributed_detection, std_bar, absorption_rate, dist_schedulers, pull_folder
+from common import C, D, p_01_qhet, multiplier, p_11, distributed_detection, std_bar, absorption_rate, dist_schedulers, pull_folder
 
 
 
@@ -154,9 +154,9 @@ if __name__ == '__main__':
 
     for s, _ in enumerate(schedulers):
         for m, mult in enumerate(multiplier):
-            p_01 = p_01_diff * mult
+            p_01 = p_01_qhet * mult
             ### Logging ###
-            print(f"load={absorption_rate[m]:1.3f}, sched={schedulers[s]} status:")
+            print(f"load={absorption_rate[m]:1.3f}, sched={schedulers[s]}. Status:")
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[m, s]):
@@ -173,17 +173,11 @@ if __name__ == '__main__':
                     cdf[m] = dist_aoii_cdf
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
-                prob_avg_df = pd.DataFrame(prob_avg.T.round(dec), columns=schedulers)
-                prob_avg_df.insert(0, 'abs_rate', absorption_rate)
-                prob_avg_df.to_csv(filename_avg, index=False)
-
-                prob_99_df = pd.DataFrame(prob_99.T.round(dec), columns=schedulers)
-                prob_99_df.insert(0, 'abs_rate', absorption_rate)
-                prob_99_df.to_csv(filename_99, index=False)
-
-                prob_999_df = pd.DataFrame(prob_999.T.round(dec), columns=schedulers)
-                prob_999_df.insert(0, 'abs_rate', absorption_rate)
-                prob_999_df.to_csv(filename_999, index=False)
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
+                    df = pd.DataFrame(res.round(dec), columns=schedulers)
+                    df.insert(0, 'abs_rate', absorption_rate)
+                    df.to_csv(file, index=False)
 
                 if s == 0:
                     cdf_df = pd.DataFrame(cdf.T, columns=absorption_rate)
