@@ -97,8 +97,8 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     M = 100
-    T = int(1e2)
-    episodes = 1
+    T = int(1e4)
+    episodes = 10
     rng = np.random.default_rng(0)
     p_01 = p_01_qhet * multiplier[2]
 
