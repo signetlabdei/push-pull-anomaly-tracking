@@ -73,8 +73,11 @@ def run_episode(sched_type: int,
         else:
             distributed_aoii[k, :] = distributed_anomaly
 
+        ### UPDATE SCHEDULER PRIORS ###
+        dist_sched.update_prior()
+
         ### PULL-BASED SUBFRAME ###
-        # Get pull schedule
+        # Get pull scheduler
         if sched_type != 3:
             scheduled = dist_sched.schedule(pull_res, risk_thr)
         else:

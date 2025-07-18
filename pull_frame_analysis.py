@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler
@@ -60,6 +59,9 @@ def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_fram
             distributed_aoii[k, :] = distributed_aoii[k - 1, :] + distributed_anomaly
         else:
             distributed_aoii[k, :] = distributed_anomaly
+
+        ### UPDATE SCHEDULER PRIORS ###
+        dist_sched.update_prior()
 
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
