@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom
-from common import C, D, qhet_p_01, qhet_multipliers, p_11, distributed_detection, std_bar, abs_rate_int, dist_schedulers, pull_folder
+from common import C, D, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, abs_rate_int, dist_schedulers, pull_folder
 
 
 
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                 dist_aoii_hist = np.zeros(M + 1)
                 for ep in range(episodes):
                     print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
-                    dist_aoii_hist += run_episode(s, M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, distributed_detection, debug_mode)[0] / episodes
+                    dist_aoii_hist += run_episode(s, M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, dt_detection_thr, debug_mode)[0] / episodes
                 dist_aoii_cdf = np.cumsum(dist_aoii_hist)
                 prob_99[s, m] = np.where(dist_aoii_cdf > 0.99)[0][0]
                 prob_999[s, m] = np.where(dist_aoii_cdf > 0.999)[0][0]
