@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom
-from common import C, D, p_01_qhet, multiplier, p_11, distributed_detection, std_bar, absorption_rate, dist_schedulers, pull_folder
+from common import C, D, qhet_p_01, qhet_multipliers, p_11, distributed_detection, std_bar, abs_rate_int, dist_schedulers, pull_folder
 
 
 
@@ -141,25 +141,25 @@ if __name__ == '__main__':
     if os.path.exists(filename_avg) and not overwrite:
         prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
     else:
-        prob_avg = np.full((len(schedulers), len(multiplier)), np.nan)
+        prob_avg = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
     if os.path.exists(filename_99) and not overwrite:
         prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
     else:
-        prob_99 = np.full((len(schedulers), len(multiplier)), np.nan)
+        prob_99 = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
     if os.path.exists(filename_999) and not overwrite:
         prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
     else:
-        prob_999 = np.full((len(schedulers), len(multiplier)), np.nan)
+        prob_999 = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
     if os.path.exists(filename_cdf) and not overwrite:
         cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy()
     else:
-        cdf = np.full((len(multiplier), M + 1), np.nan)
+        cdf = np.full((len(qhet_multipliers), M + 1), np.nan)
 
     for s, _ in enumerate(schedulers):
-        for m, mult in enumerate(multiplier):
-            p_01 = p_01_qhet * mult
+        for m, mult in enumerate(qhet_multipliers):
+            p_01 = qhet_p_01 * mult
             ### Logging ###
-            print(f"load={absorption_rate[m]:1.3f}, sched={schedulers[s]}. Status:")
+            print(f"load={abs_rate_int[m]:1.3f}, sched={schedulers[s]}. Status:")
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[m, s]):
@@ -179,11 +179,11 @@ if __name__ == '__main__':
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
                     df = pd.DataFrame(res.round(dec), columns=schedulers)
-                    df.insert(0, 'abs_rate', absorption_rate)
+                    df.insert(0, 'abs_rate', abs_rate_int)
                     df.to_csv(file, index=False)
 
                 if s == 0:
-                    cdf_df = pd.DataFrame(cdf.T, columns=absorption_rate)
+                    cdf_df = pd.DataFrame(cdf.T, columns=abs_rate_int)
                     cdf_df.insert(0, 'Psi', np.arange(M + 1))
                     cdf_df.to_csv(filename_cdf, index=False)
 

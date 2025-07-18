@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from distributed_scheduler import DistributedAnomalyScheduler
-from common import Q_vec, risk_thr_vec, C, D, p_01_qhet, multiplier, p_11, distributed_detection, std_bar, pull_folder
+from common import Q_vec, risk_thr_vec, C, D, qhet_p_01, qhet_multipliers, p_11, distributed_detection, std_bar, pull_folder
 
 
 def run_episode(num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     T = int(1e4)
     episodes = 10
     rng = np.random.default_rng(0)
-    p_01 = p_01_qhet * multiplier[2]
+    p_01 = qhet_p_01 * qhet_multipliers[2]
 
     debug_mode = False
     overwrite = False
