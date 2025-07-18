@@ -2,30 +2,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 import local_scheduler as l_sch
 import distributed_scheduler as d_sch
+import push_pull_manager as pp_man
+from common import Q_vec, risk_thr_vec, C, D, p_01_qhet, multiplier, p_11, distributed_detection, std_bar, pull_folder
 
 # Main system parameters
 nodes = 100
 max_age = 100
 M = 100     # S = 20
-P = 10
-Q = 20
+R = 20
 T = int(1e5)
 mode = 1
 debug_mode = False
 
 # Anomaly parameters
-local_anomaly_rate = 0.01
+local_anomaly_rate = 0.03
 distributed_cluster_size = 4
 distributed_cluster_number = 10
-p_01 = 0.01
+p_01 = p_01_qhet * multiplier[2]
 p_11 = 0.9
 
 # Algorithm parameters
 p_c = 0.2
 distributed_detection = 0.9
-aoii_threshold = 5
+aoii_threshold = 3
+manager_type = 1 # 0 for fixed, 1 to recompute each step, 2 for slow update (+/-1)
 
 # Utility variables
+rng = np.random.default_rng(0)
 clustered = distributed_cluster_number * distributed_cluster_size   # The first clustered nodes have distributed anomalies
 local_state = np.zeros(nodes)
 distributed_state = np.zeros(clustered)
@@ -35,31 +38,43 @@ scheduled = []
 # Instantiate schedulers
 local_sched = l_sch.LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
 dist_sched = d_sch.DistributedAnomalyScheduler(clustered, distributed_cluster_size, p_01, p_11, debug_mode)
+manager = pp_man.ResourceManager(manager_type, R)
+manager.set_push_resources(10) # Set P (only used by manager 0)
+manager.set_min_threshold(5) # Set minimum resources for each subframe (used by managers 1 and 2, ensures push doesn't go below 5)
+manager.set_hysteresis(0.005) # Set hysteresis threshold (only used by manager 2, it won't change resource allocation if the difference between the two risks is smaller than the threshold)
 
 for t in range(T):
     ### ANOMALY GENERATION ###
     local_state = np.minimum(np.ones(nodes), local_state + np.asarray(np.random.rand(nodes) < local_anomaly_rate))
     new_state = np.zeros(clustered)
-    for i in range(clustered):
-        cluster_id = int(np.floor(i / distributed_cluster_size))
-        p = p_01
-        if distributed_state[i] == 1:
-            anomaly = np.sum(distributed_state[distributed_cluster_size * (cluster_id - 1): distributed_cluster_size * cluster_id]) >= distributed_cluster_size / 2
-            if anomaly:
-                p = 1
+    for node in range(clustered):
+        cluster = dist_sched.cluster_map[node]
+        # Rearrange the 01 transition probability on a cluster basis
+        p = p_01[int(np.mod(node,distributed_cluster_size))]
+        if distributed_state[node] == 1:
+            # Check if the anomaly is present
+            if np.sum(distributed_state[dist_sched.cluster_map == cluster]) >= distributed_cluster_size / 2:
+                p = 1.
             else:
                 p = p_11
-        new_state[i] = np.random.rand() < p
+        new_state[node] = rng.random() < p
     distributed_state = new_state
     if t > 0:
         aoii[t, :] = aoii[t - 1, :] + local_state
     else:
         aoii[t, :] = local_state
 
+
+    ### UPDATE SCHEDULER PRIORS ###
+    local_sched.update_prior()
+    dist_sched.update_prior()
+    # TODO add this at the beginning of each frame in other scripts
+
     ### SUBFRAME ALLOCATION ###
     local_risk = local_sched.get_risk(aoii_threshold)
     dist_risk = dist_sched.get_average_risk
-    # TODO outer loop: decide the values of P and Q
+    P, Q = manager.allocate_resources(local_risk, dist_risk) # Allocate resources
+    print(local_risk,dist_risk,local_risk/dist_risk,P,Q)
 
     ### PULL-BASED SUBFRAME ###
     # Get pull schedule

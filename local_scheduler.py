@@ -17,6 +17,11 @@ class LocalAnomalyScheduler:
         self.scheduler_type = scheduler_type
         self.debug_mode = debug_mode
 
+    def update_prior(self):
+        self.psi[:, 2:] = self.psi[:, 1:-1]
+        self.psi[:, 0] *= (1 - self.active)
+        self.psi[:, 1] = self.psi[:, 0] * self.active
+
     def schedule(self, P, p_thr, pull_sch):
         if (self.debug_mode):
             print('p', self.psi[0,:])
@@ -130,10 +135,6 @@ class LocalAnomalyScheduler:
                     self.psi[n, threshold + 1:] *= p_node / act_prob[n]
                     if (np.sum(self.psi[n, :threshold]) > 0):
                         self.psi[n, :threshold] *= (1 - p_node) / np.sum(self.psi[n, :threshold])
-        # Next time step
-        self.psi[:, 2:] = self.psi[:, 1:-1]
-        self.psi[:, 0] *= (1 - self.active)
-        self.psi[:, 1] = self.psi[:, 0] * self.active
         if (self.debug_mode):
             print('u', threshold, self.psi[0,:])
 

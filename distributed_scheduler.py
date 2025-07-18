@@ -86,6 +86,11 @@ class DistributedAnomalyScheduler:
         return transition_matrix
 
 
+    def update_prior(self):
+        # A priori probability: update prior PMF for every cluster
+        for cluster in range(self.num_clusters):
+            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+
     def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
         """Scheduling method for nodes
 
@@ -95,11 +100,9 @@ class DistributedAnomalyScheduler:
 
         :return: np.ndarray of ints representing the indexes of scheduled nodes
         """
-        # A priori probability: update prior PMF for every cluster
-        for cluster in range(self.num_clusters):
-            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
 
-        # Get cluster risk with the new prior pmf
+
+        # Get cluster risk with the prior pmf
         cluster_risk = self.get_cluster_risk
         # Cluster-based scheduler: sort clusters by risk, then fill
         cluster_priority = np.argsort(-cluster_risk)
