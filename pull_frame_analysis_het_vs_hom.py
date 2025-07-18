@@ -124,15 +124,15 @@ if __name__ == '__main__':
         filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
 
         if os.path.exists(filename_avg) and not overwrite:
-            prob_avg = pd.read_csv(filename_avg, header=None).iloc[:, 1:].to_numpy()
+            prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
         else:
             prob_avg = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
         if os.path.exists(filename_99) and not overwrite:
-            prob_99 = pd.read_csv(filename_99, header=None).iloc[:, 1:].to_numpy()
+            prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
         else:
             prob_99 = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
         if os.path.exists(filename_999) and not overwrite:
-            prob_999 = pd.read_csv(filename_999, header=None).iloc[:, 1:].to_numpy()
+            prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
         else:
             prob_999 = np.full((len(Q_vec), len(risk_thr_vec)), np.nan)
 
