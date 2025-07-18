@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from local_scheduler import LocalAnomalyScheduler
 from distributed_scheduler import DistributedAnomalyScheduler
 from push_pull_manager import ResourceManager
-from common import Q_vec, risk_thr_vec, C, D, qhet_p_01, qhet_multipliers, p_11, distributed_detection, std_bar, pull_folder
+from common import Q_vec, risk_thr_vec, C, D, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, pull_folder
 
 # Main system parameters
 nodes = 100
