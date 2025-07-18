@@ -1,6 +1,27 @@
 import numpy as np
 import itertools
 
+# Distributed
+def generate_distributed_anomalies(p_01: np.ndarray, p_11: float, state, rng: np.random.Generator = np.random.default_rng()):
+    cluster_size = len(p_01)
+    num_nodes = len(state)
+    new_state = np.zeros(num_nodes)
+    # Compute which clusters are anomalous
+    anomalous_clusters = np.sum(state.reshape(num_nodes // cluster_size, cluster_size), axis=1) >= cluster_size / 2
+    # Check each node
+    for node in range(num_nodes):
+        cluster = node // cluster_size
+        # Rearrange the 01 transition probability on a cluster basis
+        p = p_01[int(np.mod(node, cluster_size))]
+        if state[node] == 1:
+            # If cluster is anomaouls the probability is 1 (no turning back)
+            if anomalous_clusters[cluster]:
+                p = 1.
+            else:
+                p = p_11
+        new_state[node] = rng.random() < p
+    return new_state
+
 class DistributedAnomalyScheduler:
     num_nodes = 0
     cluster_size = 0
@@ -90,6 +111,8 @@ class DistributedAnomalyScheduler:
         # A priori probability: update prior PMF for every cluster
         for cluster in range(self.num_clusters):
             self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
+        # Try the full vectorial version
+
 
     def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
         """Scheduling method for nodes

@@ -1,6 +1,9 @@
 import numpy as np
 import math
 
+def generate_local_anomalies(anomaly_rate: float, state: np.ndarray, rng: np.random.Generator = np.random.default_rng()):
+    return np.minimum(np.ones(state.shape), state + np.asarray(rng.random(state.shape) < anomaly_rate))
+
 class LocalAnomalyScheduler:
     N = 0
     psi = []
