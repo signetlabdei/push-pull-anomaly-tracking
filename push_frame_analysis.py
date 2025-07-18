@@ -1,14 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import local_scheduler as l_sch
-import distributed_scheduler as d_sch
-
-
+from local_scheduler import LocalAnomalyScheduler
 
 
 def run_episode(M, P, T, nodes, max_age, local_anomaly_rate, p_c, mode, debug_mode):
     # Instantiate scheduler
-    local_sched = l_sch.LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
+    local_sched = LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
 
     local_state = np.zeros(nodes)
     aoii = np.zeros((T, nodes))
@@ -16,10 +12,15 @@ def run_episode(M, P, T, nodes, max_age, local_anomaly_rate, p_c, mode, debug_mo
     for t in range(T):
         ### ANOMALY GENERATION ###
         local_state = np.minimum(np.ones(nodes), local_state + np.asarray(np.random.rand(nodes) < local_anomaly_rate))
+
+        ### COMPUTE AOII ###
         if t > 0:
             aoii[t, :] = aoii[t - 1, :] + local_state
         else:
             aoii[t, :] = local_state
+
+        ### UPDATE SCHEDULER PRIORS ###
+        local_sched.update_prior()
 
         ### PUSH-BASED SUBFRAME ###
         # Get local anomaly threshold

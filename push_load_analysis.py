@@ -1,30 +1,35 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import local_scheduler as l_sch
-import local_round_robin as rr_sch
-import local_aloha as a_sch
+from local_scheduler import LocalAnomalyScheduler, LocalAnomalyRoundRobinScheduler, LocalAnomalyAlohaScheduler
+
 
 def run_episode(sched_type, M, P, T, nodes, max_age, local_anomaly_rate, p_c, mode, debug_mode):
     # Instantiate scheduler
     if (sched_type == 0):
-        local_sched = rr_sch.LocalAnomalyRoundRobinScheduler(nodes)
+        local_sched = LocalAnomalyRoundRobinScheduler(nodes)
     if (sched_type == 1):
         # Maintain load close to 1
         tx_rate = 0.9 / (nodes * local_anomaly_rate / P)
     if (sched_type == 2):
-        local_sched = a_sch.LocalAnomalyAlohaScheduler(nodes, local_anomaly_rate, P)
+        local_sched = LocalAnomalyAlohaScheduler(nodes, local_anomaly_rate, P)
     if (sched_type == 3):
-        local_sched = l_sch.LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
+        local_sched = LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
     local_state = np.zeros(nodes)
     aoii = np.zeros((T, nodes))
 
     for t in range(T):
         ### ANOMALY GENERATION ###
         local_state = np.minimum(np.ones(nodes), local_state + np.asarray(np.random.rand(nodes) < local_anomaly_rate))
+
+        ### COMPUTE AOII ###
         if t > 0:
             aoii[t, :] = aoii[t - 1, :] + local_state
         else:
             aoii[t, :] = local_state
+
+        ### UPDATE SCHEDULER PRIORS ###
+        local_sched.update_prior()
+
+
 
         ### PUSH-BASED SUBFRAME ###
         if (sched_type == 0):
