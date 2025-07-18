@@ -22,16 +22,23 @@ S_step = 1
 Q_vec = np.arange(5, S + S_step, S_step, dtype=int)
 P_vec = np.arange(5, S + S_step, S_step, dtype=int)
 
-# Anomaly parameters
-# Distributed
+### MISALIGNMENT PARAMETERS ###
 p_11 = 0.9
-# p_01_base = np.array([0.001, 0.00704, 0.00725, 0.00750])
-# multiplier = np.array([1., 1.508, 1.939, 2.332])
-# absorption_rate = np.array([0.250, 0.500, 0.750, 1.000])    # anomalies/node/s related to the multiplier
 
-p_01_qhet = np.array([0.002332, 0.01642, 0.01691, 0.01749])
-multiplier = np.array([1., 1.5984, 2.1425, 2.663, 3.17])
-absorption_rate = np.array([1., 2., 3., 4., 5.])    # anomalies/node/s related to the multiplier
+# Basic load
+abs_rate_int = np.array([1., 2., 3., 4., 5.])    # anomalies/node/s related to the multiplier
+
+# Load parameters for quasi-heterogeneous clusters
+qhet_p_01 = np.array([0.002332, 0.01642, 0.01691, 0.01749])
+qhet_multipliers = np.array([1., 1.5984, 2.1425, 2.663, 3.17])
+
+# Load parameters for heterogeneous clusters
+het_p_01 = np.array([0.001, 0.005, 0.009, 0.013])
+het_multipliers = np.array([1.974, 3.162, 4.245, 5.282, 6.292])
+
+# Load parameters for heterogeneous clusters
+hom_p_01 = het_p_01.mean() * np.ones(len(het_p_01))
+hom_multipliers = np.array([1.82, 2.909, 3.899, 4.847, 5.771])
 
 # Algorithm parameters
 distributed_detection = 0.95
