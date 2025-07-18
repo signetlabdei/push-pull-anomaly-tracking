@@ -157,3 +157,44 @@ class LocalAnomalyScheduler:
         if (np.sum(p_a_cs) > 0):
             p_a_cs /= np.sum(p_a_cs)
         return p_a_cs
+
+
+class LocalAnomalyAlohaScheduler:
+    N = 0
+    rate = 0
+    P = 0
+
+    def __init__(self, N, anomaly_rate, P):
+        self.N = N
+        self.P = P
+        self.rate = 0.9 / (N * anomaly_rate / P)
+
+    def schedule(self):
+        return np.random.rand(self.N) < self.rate
+
+    def update_rate(self, outcome):
+        # Count collisions and silent slots
+        P = np.size(outcome)
+        collisions = np.size(np.where(outcome < -0.1)) / P
+        silence = np.size(np.where(outcome == 0)) / P
+        self.rate += 0.1 * (collisions - silence)
+        self.rate = np.max([self.rate, 0.2])
+        self.rate = np.min([self.rate, 1])
+
+
+class LocalAnomalyRoundRobinScheduler:
+    N = 0
+    n = 0
+
+    def __init__(self, N):
+        self.N = N
+        self.n = 0
+
+    def schedule(self, P, pull_sch=[]):
+        scheduled = np.zeros(P, dtype=int)
+        for p in range(P):
+            while (self.n in pull_sch):
+                self.n = np.mod(self.n + 1, self.N)
+            scheduled[p] = self.n
+            self.n = np.mod(self.n + 1, self.N)
+        return scheduled
