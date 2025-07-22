@@ -126,23 +126,24 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     M = 200
-    T = int(1e4)
-    episodes = 10
+    T = int(1e3)
+    episodes = 100
     managers = np.array([1, 2])
 
     # Local
-    local_anomaly_rate = 0.03
+    local_anomaly_rate = 0.035
     p_c = 0.2
 
     # Distributed
-    p_01 = qhet_p_01 * qhet_multipliers[2]
+    # p_01 = qhet_p_01 * qhet_multipliers[2]
+    p_01 = np.array([0.00441, 0.03104, 0.03196, 0.03306])
     dist_risk_thr = 0.5
 
     debug = False
-    overwrite = False
+    overwrite = True
 
     # Check if files exist and load it if there
-    prefix = 'coexistence_manager'
+    prefix = 'coexistence_manager_aoiith_2'
     filename_avg = os.path.join(coexistence_folder, prefix + '_avg.csv')
     filename_99 = os.path.join(coexistence_folder, prefix + '_99.csv')
     filename_999 = os.path.join(coexistence_folder, prefix + '_999.csv')
@@ -172,7 +173,7 @@ if __name__ == '__main__':
             for ep in range(episodes):
                 print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
                 loc_tmp, dist_tmp = run_episode(M, T, R,
-                                                N, max_age, local_anomaly_rate, p_c, 3,
+                                                N, max_age, local_anomaly_rate, p_c, 2,
                                                 C, D, dist_risk_thr, p_01, p_11, dt_detection_thr,
                                                 manager,
                                                 np.random.default_rng(0), debug)
