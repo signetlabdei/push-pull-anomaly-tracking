@@ -1,15 +1,18 @@
 import numpy as np
 import pandas as pd
 import os
-from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom
+from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom, generate_distributed_anomalies
 from common import C, D, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, abs_rate_int, dist_schedulers, pull_folder
+from dist_rate_test import compute_absorption_rate
 
 
 
 def run_episode(sched_type: int,
                 num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
                 pull_res: int, p_01_vec: np.array or list, p_11: float,
-                risk_thr: float, detection_thr: float, debug_mode: bool):
+                risk_thr: float, detection_thr: float,
+                rng: np.random.Generator = np.random.default_rng(),
+                debug_mode: bool = False):
     """ Generate a single episode
 
     :param cluster_size:
@@ -49,29 +52,14 @@ def run_episode(sched_type: int,
     for k in std_bar(range(max_num_frame)):
 
         ### ANOMALY GENERATION ###
-        new_state = np.zeros(num_clustered_nodes)
-        for node in range(num_clustered_nodes):
-            cluster = dist_sched.cluster_map[node]
-            # Rearrange the 01 transition probability on a cluster basis
-            p = p_01_vec[int(np.mod(node,cluster_size))]
-            if distributed_state[node] == 1:
-                # Check if the anomaly is present
-                if np.sum(distributed_state[dist_sched.cluster_map == cluster]) >= cluster_size / 2:
-                    p = 1.
-                else:
-                    p = p_11
-            new_state[node] = rng.random() < p
-        distributed_state = new_state
+        distributed_state = generate_distributed_anomalies(p_01_vec, p_11, distributed_state, rng)
 
         # Compute distributed state z^{(i)}(k)
-        for cluster in range(num_cluster):
-            distributed_anomaly[cluster] = np.sum(distributed_state[dist_sched.cluster_map == cluster]) >= cluster_size / 2
+        distributed_anomaly = np.asarray(np.sum(distributed_state.reshape(num_clustered_nodes // cluster_size, cluster_size), axis=1)
+                                >= cluster_size / 2, dtype=int)
 
         # Compute AoII
-        if k > 0:
-            distributed_aoii[k, :] = distributed_aoii[k - 1, :] + distributed_anomaly
-        else:
-            distributed_aoii[k, :] = distributed_anomaly
+        distributed_aoii[k, :] = distributed_aoii[k - 1, :] + distributed_anomaly if k > 0 else distributed_anomaly
 
         ### UPDATE SCHEDULER PRIORS ###
         dist_sched.update_prior()
@@ -115,24 +103,23 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     M = 200
-    T = int(1e4)
-    episodes = 10
+    T = int(1e3)
+    episodes = 100
     rng = np.random.default_rng(0)
     schedulers = dist_schedulers
 
     debug_mode = False
     overwrite = True
 
-    # Population
-    cluster_size = C
-    num_cluster = D
-
     # Parameters
     Q = 10
     risk_thr = 0.5
 
+    multipliers = np.linspace(qhet_multipliers[0], qhet_multipliers[-1], 30)
+    absorption_rates = compute_absorption_rate(qhet_p_01, p_11, multipliers, show=False)
+
     # Check if files exist and load it if there
-    prefix = 'pull_load'
+    prefix = 'pull_load_fine'
     filename_avg = os.path.join(pull_folder, prefix + '_avg.csv')
     filename_99 = os.path.join(pull_folder, prefix + '_99.csv')
     filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
@@ -141,32 +128,35 @@ if __name__ == '__main__':
     if os.path.exists(filename_avg) and not overwrite:
         prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
     else:
-        prob_avg = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
+        prob_avg = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_99) and not overwrite:
         prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
     else:
-        prob_99 = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
+        prob_99 = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_999) and not overwrite:
         prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
     else:
-        prob_999 = np.full((len(schedulers), len(qhet_multipliers)), np.nan)
+        prob_999 = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_cdf) and not overwrite:
         cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy()
     else:
-        cdf = np.full((len(qhet_multipliers), M + 1), np.nan)
+        cdf = np.full((len(multipliers), M + 1), np.nan)
 
     for s, _ in enumerate(schedulers):
-        for m, mult in enumerate(qhet_multipliers):
+        for m, mult in enumerate(multipliers):
             p_01 = qhet_p_01 * mult
             ### Logging ###
-            print(f"load={abs_rate_int[m]:1.3f}, sched={schedulers[s]}. Status:")
+            print(f"load={absorption_rates[m]:1.3f}, sched={schedulers[s]}. Status:")
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[m, s]):
                 dist_aoii_hist = np.zeros(M + 1)
                 for ep in range(episodes):
                     print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
-                    dist_aoii_hist += run_episode(s, M, cluster_size, num_cluster, T, Q, p_01, p_11, risk_thr, dt_detection_thr, debug_mode)[0] / episodes
+                    dist_aoii_hist += run_episode(s, M, C, D, T, Q,
+                                                  p_01, p_11, risk_thr, dt_detection_thr,
+                                                  rng,
+                                                  debug_mode)[0] / episodes
                 dist_aoii_cdf = np.cumsum(dist_aoii_hist)
                 prob_99[s, m] = np.where(dist_aoii_cdf > 0.99)[0][0]
                 prob_999[s, m] = np.where(dist_aoii_cdf > 0.999)[0][0]
@@ -178,12 +168,12 @@ if __name__ == '__main__':
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
-                    df = pd.DataFrame(res.round(dec), columns=schedulers)
-                    df.insert(0, 'abs_rate', abs_rate_int)
+                    df = pd.DataFrame(res.T.round(dec), columns=schedulers)
+                    df.insert(0, 'abs_rate', absorption_rates)
                     df.to_csv(file, index=False)
 
                 if s == 0:
-                    cdf_df = pd.DataFrame(cdf.T, columns=abs_rate_int)
+                    cdf_df = pd.DataFrame(cdf.T, columns=absorption_rates.round(dec))
                     cdf_df.insert(0, 'Psi', np.arange(M + 1))
                     cdf_df.to_csv(filename_cdf, index=False)
 
