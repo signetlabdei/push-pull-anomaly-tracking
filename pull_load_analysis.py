@@ -1,28 +1,28 @@
 import numpy as np
 import pandas as pd
 import os
-from distributed_scheduler import DistributedAnomalyScheduler, DistributedRoundRobin, DistributedRandom, generate_distributed_anomalies
-from common import C, D, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, abs_rate_int, dist_schedulers, pull_folder
+from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
+from common import M, C, D, T, E,  het_p_01, het_multipliers, p_11, dt_detection_thr, std_bar, dist_schedulers, pull_folder
 from dist_rate_test import compute_absorption_rate
 
 
 
 def run_episode(sched_type: int,
                 num_bins: int, cluster_size: int, num_cluster: int, max_num_frame: int,
-                pull_res: int, p_01_vec: np.array or list, p_11: float,
-                risk_thr: float, detection_thr: float,
+                pull_res: int, p_01_vec: np.array or list, p_11: float, detection_thr: float,
                 rng: np.random.Generator = np.random.default_rng(),
                 debug_mode: bool = False):
     """ Generate a single episode
 
-    :param cluster_size:
-    :param num_cluster:
-    :param max_num_frame:
-    :param pull_res:
-    :param p_01_vec: vector containing [p_01, p_11] # TODO: it should contain the p_01 per node!
+    :param sched_type: int representing the scheduler type, 0: PPS, 1: CRA, 2: MAF
+    :param cluster_size: int representing the cluster size
+    :param num_cluster: int representing the number of clusters
+    :param max_num_frame: int representing the maximum number of frames under test
+    :param pull_res: int representing the number of pull resources (:math:`Q` in the paper)
+    :param p_01_vec: vector containing [p_01, p_11]
     :param p_11: float
-    :param risk_thr:
     :param detection_thr:
+    :param rng: random number generator
     :param debug_mode:
     :return:
     """
@@ -30,27 +30,14 @@ def run_episode(sched_type: int,
     assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
 
     num_clustered_nodes = num_cluster * cluster_size   # The first clustered nodes have distributed anomalies
-    if sched_type == 0:
-        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
-    elif sched_type == 1:
-        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
-        risk_thr = 0.
-    elif sched_type == 2:
-        dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
-        risk_thr = 1.
-    elif sched_type == 3:
-        dist_sched = DistributedRoundRobin(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
-    elif sched_type == 4:
-        dist_sched = DistributedRandom(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
+    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
 
     # Utility variables
     distributed_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
-    distributed_anomaly = np.zeros(num_cluster, dtype=int)          # z^{(i)}(k) in the paper
     distributed_aoii = np.zeros((max_num_frame, num_cluster))
 
     # Start frames
     for k in std_bar(range(max_num_frame)):
-
         ### ANOMALY GENERATION ###
         distributed_state = generate_distributed_anomalies(p_01_vec, p_11, distributed_state, rng)
 
@@ -66,10 +53,12 @@ def run_episode(sched_type: int,
 
         ### PULL-BASED SUBFRAME ###
         # Get pull scheduler
-        if sched_type != 3:
-            scheduled = dist_sched.schedule(pull_res, risk_thr)
-        else:
-            scheduled = dist_sched.schedule(pull_res, k)
+        if sched_type == 0:
+            scheduled = dist_sched.schedule(pull_res)
+        elif sched_type == 1:
+            scheduled = dist_sched.schedule_cra(pull_res)
+        else:   # sched_type == 2
+            scheduled = dist_sched.schedule_maf(pull_res, k)
 
         ### POST-FRAME UPDATE ###
         # Distributed anomaly belief update
@@ -102,9 +91,6 @@ def run_episode(sched_type: int,
 if __name__ == '__main__':
     # Simulation variables
     dec = 6
-    M = 200
-    T = int(1e3)
-    episodes = 100
     rng = np.random.default_rng(0)
     schedulers = dist_schedulers
 
@@ -113,13 +99,11 @@ if __name__ == '__main__':
 
     # Parameters
     Q = 10
-    risk_thr = 0.5
-
-    multipliers = np.linspace(qhet_multipliers[0], qhet_multipliers[-1], 30)
-    absorption_rates = compute_absorption_rate(qhet_p_01, p_11, multipliers, show=False)
+    multipliers = np.linspace(het_multipliers[0], het_multipliers[-1], 30)
+    absorption_rates = compute_absorption_rate(het_p_01, p_11, multipliers, show=False)
 
     # Check if files exist and load it if there
-    prefix = 'pull_load_fine'
+    prefix = 'pull_load'
     filename_avg = os.path.join(pull_folder, prefix + '_avg.csv')
     filename_99 = os.path.join(pull_folder, prefix + '_99.csv')
     filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
@@ -144,19 +128,19 @@ if __name__ == '__main__':
 
     for s, _ in enumerate(schedulers):
         for m, mult in enumerate(multipliers):
-            p_01 = qhet_p_01 * mult
+            p_01 = het_p_01 * mult
             ### Logging ###
             print(f"load={absorption_rates[m]:1.3f}, sched={schedulers[s]}. Status:")
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[m, s]):
                 dist_aoii_hist = np.zeros(M + 1)
-                for ep in range(episodes):
-                    print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
+                for ep in range(E):
+                    print(f'\tEpisode: {ep:02d}/{E-1:02d}')
                     dist_aoii_hist += run_episode(s, M, C, D, T, Q,
-                                                  p_01, p_11, risk_thr, dt_detection_thr,
+                                                  p_01, p_11, dt_detection_thr,
                                                   rng,
-                                                  debug_mode)[0] / episodes
+                                                  debug_mode)[0] / E
                 dist_aoii_cdf = np.cumsum(dist_aoii_hist)
                 prob_99[s, m] = np.where(dist_aoii_cdf > 0.99)[0][0]
                 prob_999[s, m] = np.where(dist_aoii_cdf > 0.999)[0][0]
@@ -165,7 +149,6 @@ if __name__ == '__main__':
                 if s == 0:
                     cdf[m] = dist_aoii_cdf
 
-                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
                     df = pd.DataFrame(res.T.round(dec), columns=schedulers)
