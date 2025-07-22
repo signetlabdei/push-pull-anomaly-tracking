@@ -104,6 +104,7 @@ if __name__ == '__main__':
     print('ratio\n', qhet_ratio, '\n')
     qhet_absorption_rate = compute_absorption_rate(qhet_p_01, p_11, qhet_multipliers)
 
+    compute_absorption_rate(np.array([0.00441, 0.03104, 0.03196, 0.03306]), p_11, np.array([1.]))
 
     ### HETEROGENEOUS ###
     het_p_01 = np.array([0.001, 0.005, 0.009, 0.013])
