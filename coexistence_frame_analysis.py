@@ -10,7 +10,6 @@ from common import N, R, C, D, max_age, qhet_p_01, qhet_multipliers, p_11, dt_de
 def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resources: int,
                 num_nodes: int, max_age: int, anomaly_rate: float, p_c: float, aoii_thr: int,
                 cluster_size: int, num_cluster: int, risk_thr: float,  p_01_vec: np.array or list, p_11: float, detection_thr: float,
-
                 rng: np.random.Generator,
                 debug_mode: bool = False):
     # Instantiate scheduler
@@ -28,7 +27,6 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resource
     # Utility variables
     local_state = np.zeros(num_nodes)
     distributed_state = np.zeros(num_clustered_nodes, dtype=int)  # y(k) in the paper
-    distributed_anomaly = np.zeros(num_cluster, dtype=int)  # z^{(i)}(k) in the paper
     local_aoii = np.zeros((max_num_frame, num_nodes))
     distributed_aoii = np.zeros((max_num_frame, num_cluster))
 
@@ -123,8 +121,8 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     M = 200
-    T = int(1e4)
-    episodes = 10
+    T = int(1e3)
+    episodes = 100
     P_vec = np.arange(2, 19)
 
     # Local
