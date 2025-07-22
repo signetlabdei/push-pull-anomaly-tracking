@@ -34,13 +34,15 @@ class DistributedAnomalyScheduler:
     transition_matrix = []
     debug_mode = False
 
-    def __init__(self, num_nodes, cluster_size, p_01, p_11, debug_mode):
+    def __init__(self, num_nodes, cluster_size, p_01, p_11,
+                 rng: np.random.Generator = np.random.default_rng(), debug_mode: bool = False):
         """Constructor of the class
 
         :param num_nodes: number of nodes in the system :math:`N`
         :param cluster_size: size of the cluster :math:`C`
         :param p_01: initial probability :math:`U^{(i)}_{0,1}
-        :param p_11: initial probability :math:`U^{(i)}_{1,1}
+        :param p_11: initial probability :math:`U^{(i)}_{1,1}ù
+        :param rng: random number generator
         :param debug_mode: boolean flag to enable debug mode`
         """
         assert num_nodes % cluster_size == 0, "Number of nodes must be a multiple of the number of clusters"
@@ -58,6 +60,8 @@ class DistributedAnomalyScheduler:
         # Initialize the pmf over the possible states
         self.state_pmf = self.init_state_pmf()          # \zeta in the paper
         self.transition_matrix = self.init_transition_matrix(p_01, p_11)    # U in the paper
+        # RNG
+        self.rng = rng
         # Debug
         self.debug_mode = debug_mode
 
@@ -114,29 +118,65 @@ class DistributedAnomalyScheduler:
         # Try the full vectorial version
 
 
-    def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
-        """Scheduling method for nodes
+    def schedule(self, pull_resources: int) -> np.ndarray:
+        """Scheduling Pull-Push Scheduler method for nodes
 
-        :param pull_resources: int, number of REs for pull communication (Q in the paper)
-        :param cluster_risk_thr: float, threshold for cluster's risk. All nodes in clusters with risk of anomaly
-                                higher than this should be scheduled
-
+        :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
         :return: np.ndarray of ints representing the indexes of scheduled nodes
         """
+        # Node-based scheduler using
+        node_priority = -np.ones(self.num_nodes)
+        free_resources = pull_resources
+        scheduled = -np.ones(pull_resources, dtype=int)
+        # Start iterating until the resources are full
+        while free_resources > 0:
+            # Iterate through nodes
+            for node in range(self.num_nodes):
+                # We need to recompute the information gain
+                # Check if the node is not scheduled yet and its priority has not been computed yet
+                if node not in scheduled and node_priority[node] < 0:
+                    # Check whether the node can be scheduled
+                    cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
+                    # Take nodes of the cluster already scheduled (if any) and perform a mod(x, self.cluster_size) (needed for get_information)
+                    prev = np.remainder(np.intersect1d(cluster_nodes, scheduled), self.cluster_size)
+                    # Take the node_id and perform a mod(x, self.cluster_size) (needed for get_information)
+                    node_id = np.remainder(node, self.cluster_size)
+                    # Find previously scheduled nodes in the same cluster
+                    if np.size(cluster_nodes) > 0:
+                        nodes = np.append(prev, node_id)
+                    else:
+                        nodes = np.asarray([node_id], dtype=int)
+                    # Compute the information gain
+                    info_prev = self.__get_information(self.cluster_map[node], prev)
+                    info_node = self.__get_information(self.cluster_map[node], nodes)
+                    node_priority[node] = info_prev - info_node
+            # Schedule the node with the highest priority
+            next_node = np.argmax(node_priority)
+            scheduled[-free_resources] = next_node
+            # Reset priority value for all the nodes of the cluster of next_node
+            node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
+            free_resources -= 1
+            if self.debug_mode:
+                print(node_priority)
+        return scheduled
 
+    def schedule_cra(self, pull_resources: int) -> np.ndarray:
+        """Benchmark Cluster Risk Aware Scheduling method
 
+        :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
+        :return: np.ndarray of ints representing the indexes of scheduled nodes
+        """
         # Get cluster risk with the prior pmf
         cluster_risk = self.get_cluster_risk
         # Cluster-based scheduler: sort clusters by risk, then fill
         cluster_priority = np.argsort(-cluster_risk)
-        node_priority = -np.ones(self.num_nodes)
         free_resources = pull_resources
         cluster_idx = 0
         scheduled = -np.ones(pull_resources, dtype=int)
         # Start iterating until the resources are full
         while free_resources > 0:
             # Check if there are high-risk clusters and if there is space to schedule their nodes
-            if cluster_risk[cluster_priority[cluster_idx]] >= cluster_risk_thr and free_resources >= self.cluster_size:
+            if free_resources >= self.cluster_size:
                 # Iterate by cluster
                 nodes = np.where(self.cluster_map == cluster_priority[cluster_idx])[0]
                 # Cases to avoid that array[-x:0] returns an empty array and breaks the code
@@ -147,34 +187,20 @@ class DistributedAnomalyScheduler:
                 free_resources -= self.cluster_size
                 cluster_idx += 1
             else:
-                # Iterate through remaining nodes
-                for node in range(self.num_nodes):
-                    # We need to recompute the information gain
-                    # Check if the node is not scheduled yet and its priority has not been computed yet
-                    if node not in scheduled and node_priority[node] < 0:
-                        # Check whether the node can be scheduled
-                        cluster_nodes = np.where(self.cluster_map == self.cluster_map[node])[0]
-                        # Take nodes of the cluster already scheduled (if any) and perform a mod(x, self.cluster_size) (needed for get_information)
-                        prev = np.remainder(np.intersect1d(cluster_nodes, scheduled), self.cluster_size)
-                        # Take the node_id and perform a mod(x, self.cluster_size) (needed for get_information)
-                        node_id = np.remainder(node, self.cluster_size)
-                        # Find previously scheduled nodes in the same cluster
-                        if np.size(cluster_nodes) > 0:
-                            nodes = np.append(prev, node_id)
-                        else:
-                            nodes = np.asarray([node_id], dtype=int)
-                        # Compute the information gain
-                        info_prev = self.__get_information(self.cluster_map[node], prev)
-                        info_node = self.__get_information(self.cluster_map[node], nodes)
-                        node_priority[node] = info_prev - info_node
-                # Schedule the node with the highest priority
-                next_node = np.argmax(node_priority)
-                scheduled[-free_resources] = next_node
-                # Reset priority value for all the nodes of the cluster of next_node
-                node_priority[np.where(self.cluster_map == self.cluster_map[next_node])[0]] = -1
-                free_resources -= 1
-                if self.debug_mode:
-                    print(node_priority)
+                # Randomly take the remaining nodes from the cluster with high priority
+                nodes = np.where(self.cluster_map == cluster_priority[cluster_idx])[0]
+                scheduled[-free_resources:] = self.rng.choice(nodes, size=free_resources, replace=False)
+                free_resources = 0
+        return scheduled
+
+    def schedule_maf(self, pull_resources: int, present_frame_idx: int) -> np.ndarray:
+        """Benchmark Maximum Age First Scheduling method
+
+        :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
+        :param present_frame_idx: int, index of the present frame"""
+        start = pull_resources * present_frame_idx
+        end = start + pull_resources
+        scheduled = np.arange(start, end) % self.num_nodes
         return scheduled
 
     def update_posterior_pmf(self,
@@ -328,27 +354,3 @@ class DistributedAnomalyScheduler:
             return 0
         else:
             return -np.dot(np.log2(prob_vector), prob_vector)
-
-
-class DistributedRoundRobin(DistributedAnomalyScheduler):
-    def schedule(self, pull_resources: int, frame_num: int) -> np.ndarray:
-        # A priori probability: update prior PMF for every cluster
-        for cluster in range(self.num_clusters):
-            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
-
-        # Stupid scheduler
-        start = pull_resources * frame_num
-        end = start + pull_resources
-        scheduled = np.arange(start, end) % self.num_nodes
-        return scheduled
-
-
-class DistributedRandom(DistributedAnomalyScheduler):
-    def schedule(self, pull_resources: int, cluster_risk_thr: float = 0.) -> np.ndarray:
-        # A priori probability: update prior PMF for every cluster
-        for cluster in range(self.num_clusters):
-            self.state_pmf[:, cluster] = np.squeeze(np.matmul(self.state_pmf[:, cluster][np.newaxis], self.transition_matrix))
-
-        # Stupid scheduler
-        scheduled = np.random.choice(np.arange(self.num_nodes), size=pull_resources, replace=False)
-        return scheduled
