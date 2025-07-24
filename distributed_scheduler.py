@@ -14,7 +14,7 @@ def generate_distributed_anomalies(p_01: np.ndarray, p_11: float, state, rng: np
         # Rearrange the 01 transition probability on a cluster basis
         p = p_01[int(np.mod(node, cluster_size))]
         if state[node] == 1:
-            # If cluster is anomaouls the probability is 1 (no turning back)
+            # If cluster is misaligned the probability is 1 (no turning back)
             if anomalous_clusters[cluster]:
                 p = 1.
             else:
