@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
-from common import M, C, D, T, E,  het_p_01, het_multipliers, p_11, dt_detection_thr, std_bar, dist_schedulers, pull_folder
+from common import M, C, D, T, E,  het_p01, het_multipliers, p11, dt_detection_thr, std_bar, dist_schedulers, pull_folder
 from dist_rate_test import compute_absorption_rate
 
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     # Parameters
     Q = 10
     multipliers = np.linspace(het_multipliers[0], het_multipliers[-1], 30)
-    absorption_rates = compute_absorption_rate(het_p_01, p_11, multipliers, show=False)
+    absorption_rates = compute_absorption_rate(het_p01, p11, multipliers, show=False)
 
     # Check if files exist and load it if there
     prefix = 'pull_load'
@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     for s, _ in enumerate(schedulers):
         for m, mult in enumerate(multipliers):
-            p_01 = het_p_01 * mult
+            p_01 = het_p01 * mult
             ### Logging ###
             print(f"load={absorption_rates[m]:1.3f}, sched={schedulers[s]}. Status:")
 
@@ -138,7 +138,7 @@ if __name__ == '__main__':
                 for ep in range(E):
                     print(f'\tEpisode: {ep:02d}/{E-1:02d}')
                     dist_aoii_hist += run_episode(s, M, C, D, T, Q,
-                                                  p_01, p_11, dt_detection_thr,
+                                                  p_01, p11, dt_detection_thr,
                                                   rng,
                                                   debug_mode)[0] / E
                 dist_aoii_cdf = np.cumsum(dist_aoii_hist)

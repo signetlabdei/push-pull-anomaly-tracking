@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-from common import M, C, D, T, E, Q_vec, het_p_01, het_multipliers, hom_p_01, hom_multipliers, p_11, dt_detection_thr, pull_folder, dist_schedulers
+from common import M, C, D, T, E, Q_vec, het_p01, het_multipliers, hom_p01, hom_multipliers, p11, dt_detection_thr, pull_folder, dist_schedulers
 from pull_load_analysis import run_episode
 
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
             prob_999 = np.full((len(Q_vec), len(schedulers)), np.nan)
 
         # Get load
-        p_01 = het_p_01 * het_multipliers[2] if clu == 'het' else hom_p_01 * hom_multipliers[2]
+        p_01 = het_p01 * het_multipliers[2] if clu == 'het' else hom_p01 * hom_multipliers[2]
 
         for s, _ in enumerate(schedulers):
             for q, Q in enumerate(Q_vec):
@@ -48,7 +48,7 @@ if __name__ == '__main__':
                     for ep in range(E):
                         print(f'\tEpisode: {ep:02d}/{E-1:02d}')
                         dist_aoii_hist += run_episode(s, M, C, D, T, Q,
-                                                      p_01, p_11, dt_detection_thr,
+                                                      p_01, p11, dt_detection_thr,
                                                       rng,
                                                       debug_mode)[0] / E
                     dist_aoii_cdf = np.cumsum(dist_aoii_hist)
