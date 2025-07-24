@@ -1,5 +1,5 @@
 import numpy as np
-from common import C, frame_duration, p_11
+from common import frame_duration, p11
 
 def index_to_cluster_state(idx, cluster_size) -> np.ndarray:
     """Translator from an index in the pmf to a cluster state.
@@ -102,9 +102,9 @@ if __name__ == '__main__':
     print('Quasi-heterogeneous clusters:')
     qhet_ratio = nodes_ratio(qhet_p_01)
     print('ratio\n', qhet_ratio, '\n')
-    qhet_absorption_rate = compute_absorption_rate(qhet_p_01, p_11, qhet_multipliers)
+    qhet_absorption_rate = compute_absorption_rate(qhet_p_01, p11, qhet_multipliers)
 
-    compute_absorption_rate(np.array([0.00441, 0.03104, 0.03196, 0.03306]), p_11, np.array([1.]))
+    compute_absorption_rate(np.array([0.00441, 0.03104, 0.03196, 0.03306]), p11, np.array([1.]))
 
     ### HETEROGENEOUS ###
     het_p_01 = np.array([0.001, 0.005, 0.009, 0.013])
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     print('\nHeterogeneous clusters:')
     het_ratio = nodes_ratio(het_p_01)
     print('ratio\n', het_ratio, '\n')
-    het_absorption_rate = compute_absorption_rate(het_p_01, p_11, het_multipliers)
+    het_absorption_rate = compute_absorption_rate(het_p_01, p11, het_multipliers)
 
     ### HOMOGENEOUS ###
     homo_p_01 = het_p_01.mean() * np.ones(len(het_p_01))
@@ -120,4 +120,4 @@ if __name__ == '__main__':
     print('\nHomogeneous clusters:')
     homo_ratio = nodes_ratio(homo_p_01)
     print('ratio\n', homo_ratio, '\n')
-    homo_absorption_rate = compute_absorption_rate(homo_p_01, p_11, homo_multipliers)
+    homo_absorption_rate = compute_absorption_rate(homo_p_01, p11, homo_multipliers)
