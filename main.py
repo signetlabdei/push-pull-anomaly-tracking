@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from local_scheduler import LocalAnomalyScheduler
 from distributed_scheduler import DistributedAnomalyScheduler
 from push_pull_manager import ResourceManager
-from common import Q_vec, risk_thr_vec, C, D, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, pull_folder
+from common import Q_vec, risk_thr_vec, C, D, het_p01, het_multipliers, p11, dt_detection_thr, std_bar, pull_folder
 
 # Main system parameters
 nodes = 100
@@ -18,7 +18,7 @@ debug_mode = True
 local_anomaly_rate = 0.03
 distributed_cluster_size = 4
 distributed_cluster_number = 10
-p_01 = qhet_p_01 * qhet_multipliers[2]
+p_01 = het_p01 * het_multipliers[2]
 p_11 = 0.9
 risk_thr = 0.5
 
