@@ -4,13 +4,14 @@ import os
 from local_scheduler import generate_local_anomalies, LocalAnomalyScheduler
 from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
 from push_pull_manager import ResourceManager
-from common import N, R, C, D, max_age, qhet_p_01, qhet_multipliers, p_11, dt_detection_thr, std_bar, coexistence_folder
+from common import N, R, C, D, T, E, M, RNG, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_detection_thr, std_bar, coexistence_folder
 
 
-def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resources: int,
-                num_nodes: int, max_age: int, anomaly_rate: float, p_c: float, aoii_thr: int,
-                cluster_size: int, num_cluster: int, risk_thr: float,  p_01_vec: np.array or list, p_11: float, detection_thr: float,
-                rng: np.random.Generator,
+def run_episode(num_bins: int, max_num_frame: int, resources: int,
+                num_nodes: int, max_age: int, anomaly_rate: float, sigma: float, aoii_thr: int,
+                cluster_size: int, num_cluster: int, p_01_vec: np.array or list, p_11: float, detection_thr: float,
+                manager_type: int, push_resources: int = 2, hysteresis: float = 0.005,
+                rng: np.random.Generator = np.random.default_rng(),
                 debug_mode: bool = False):
     # Instantiate scheduler
     assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
@@ -19,10 +20,14 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resource
 
     # Instantiate schedulers
     local_sched = LocalAnomalyScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, debug_mode)
-    manager = ResourceManager(0, resources)
-    # Set P beforehand
-    manager.set_push_resources(push_resources)
+    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
+    manager = ResourceManager(manager_type, resources)
+    if manager_type == 0:   # Set P beforehand
+        manager.set_push_resources(push_resources)
+    elif manager_type in [1, 2]:
+        manager.set_min_threshold(push_resources)
+        if manager_type == 2:
+            manager.set_hysteresis(hysteresis)
 
     # Utility variables
     local_state = np.zeros(num_nodes)
@@ -52,21 +57,21 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resource
         ### SUBFRAME ALLOCATION ###
         local_risk = local_sched.get_risk(aoii_thr)
         dist_risk = dist_sched.get_average_risk
-        P, Q = manager.allocate_resources()  # Allocate resources
+        P, Q = manager.allocate_resources(local_risk, dist_risk)  # Allocate resources
         if debug_mode:
             print('local_risk', local_risk, 'dist_risk', dist_risk, 'ratio', local_risk / dist_risk)
             print('P', P, 'Q', Q)
 
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
-        scheduled = dist_sched.schedule(Q, risk_thr)
+        scheduled = dist_sched.schedule(Q)
         # Fix local anomalies in scheduled slots
         local_aoii[k, scheduled] = 0
         local_state[scheduled] = 0
 
         ### PUSH-BASED SUBFRAME ###
         # Get local anomaly threshold
-        threshold = local_sched.schedule(P, p_c, scheduled)
+        threshold = local_sched.schedule(P, sigma, scheduled)
         # Select random slots for active nodes
         choices = rng.integers(1, P + 1, num_nodes) * np.asarray(local_aoii[k, :] > threshold)
         outcome = np.zeros(P, dtype=int)
@@ -88,7 +93,7 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resource
         local_sched.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
         cluster_in_anomaly = dist_sched.update_posterior_pmf(successful, distributed_state[successful],
-                                                             dt_detection_thr)
+                                                             detection_thr)
 
         ### LOGGING ###
         if debug_mode:
@@ -120,76 +125,70 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int, push_resource
 if __name__ == '__main__':
     # Simulation variables
     dec = 6
-    M = 200
-    T = int(1e3)
-    episodes = 100
-    P_vec = np.arange(2, 19)
-
-    # Local
-    local_anomaly_rate = 0.03
-    p_c = 0.2
-
-    # Distributed
-    p_01 = qhet_p_01 * qhet_multipliers[2]
-    dist_risk_thr = 0.5
-
     debug = False
-    overwrite = False
+    overwrite = True
 
-    # Check if files exist and load it if there
-    prefix = 'coexistence_frame'
-    filename_avg = os.path.join(coexistence_folder, prefix + '_avg.csv')
-    filename_99 = os.path.join(coexistence_folder, prefix + '_99.csv')
-    filename_999 = os.path.join(coexistence_folder, prefix + '_999.csv')
+    # Parameters
+    P_vec = np.arange(2, 19)
+    aoii_thr = 2
 
-    if os.path.exists(filename_avg) and not overwrite:
-        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
-    else:
-        prob_avg = np.full((len(P_vec), 2), np.nan)
-    if os.path.exists(filename_99) and not overwrite:
-        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
-    else:
-        prob_99 = np.full((len(P_vec), 2), np.nan)
-    if os.path.exists(filename_999) and not overwrite:
-        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
-    else:
-        prob_999 = np.full((len(P_vec), 2), np.nan)
 
-    # Start iterations
-    for p, P in enumerate(P_vec):
-        ### Logging ###
-        print(f"P={P:02d}. Status:")
+    # Order of saving data
+    column_titles = ['ThetaAvg', 'Theta99', 'Theta999', 'PsiAvg', 'Psi99', 'Psi999']
 
-        # Check if data is there
-        if overwrite or np.all(np.isnan(prob_avg[p])):
-            loca_aoii_hist = np.zeros(M + 1)
-            dist_aoii_hist = np.zeros(M + 1)
-            for ep in range(episodes):
-                print(f'\tEpisode: {ep:02d}/{episodes-1:02d}')
-                loc_tmp, dist_tmp = run_episode(M, T, R, P,
-                                                N, max_age, local_anomaly_rate, p_c, 3,
-                                                C, D, dist_risk_thr, p_01, p_11, dt_detection_thr,
-                                                np.random.default_rng(0), debug)
-                loca_aoii_hist += loc_tmp[0] / episodes
-                dist_aoii_hist += dist_tmp[0] / episodes
+    # Start cases
+    for load in ['het']: # ['hom', 'het']:
+        # Check if files exist and load it if there
+        prefix = 'coexistence_frame_' + load
+        filename = os.path.join(coexistence_folder, prefix + '.csv')
 
-            # Local
-            loca_aoii_cdf = np.cumsum(loca_aoii_hist)
-            prob_99[p, 0] = np.where(loca_aoii_cdf > 0.99)[0][0]
-            prob_999[p, 0] = np.where(loca_aoii_cdf > 0.999)[0][0]
-            prob_avg[p, 0] = np.dot(loca_aoii_hist, np.arange(0, M + 1, 1))
-
-            # Dist
-            dist_aoii_cdf = np.cumsum(dist_aoii_hist)
-            prob_99[p, 1] = np.where(dist_aoii_cdf > 0.99)[0][0]
-            prob_999[p, 1] = np.where(dist_aoii_cdf > 0.999)[0][0]
-            prob_avg[p, 1] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
-
-            # Generate data frame and save it (redundant but to avoid to lose data for any reason)
-            for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
-                df = pd.DataFrame(res.round(dec), columns=['Theta', 'Psi'])
-                df.insert(0, 'P', P_vec)
-                df.to_csv(file, index=False)
+        if os.path.exists(filename):
+            aoii = pd.read_csv(filename).iloc[:, 1:].to_numpy()
         else:
-            print("\t...already done!")
-            continue
+            aoii = np.full((len(P_vec), 6), np.nan)
+
+        # Get load
+        anomaly_rate = 0.03 if load == 'hom' else 0.035
+        p_01 = het_p01 * het_multipliers[2] if load == 'hom' else p01_25
+
+        # Start iterations
+        for p, P in enumerate(P_vec):
+            ### Logging ###
+            print(f"Load {load}; P={P:02d}. Status:")
+
+            # Check if data is there
+            if overwrite or np.all(np.isnan(aoii[p])):
+                if P != 2:
+                    continue
+                loca_aoii_hist = np.zeros(M + 1)
+                dist_aoii_hist = np.zeros(M + 1)
+                for ep in range(E):
+                    print(f'\tEpisode: {ep:02d}/{E-1:02d}')
+                    loc_tmp, dist_tmp = run_episode(M, T, R,
+                                                    N, max_age, anomaly_rate, SIGMA, aoii_thr,
+                                                    C, D, p_01, p11, dt_detection_thr,
+                                                    0, P, ETA,
+                                                    np.random.default_rng(1), debug)
+                    loca_aoii_hist += loc_tmp[0] / E
+                    dist_aoii_hist += dist_tmp[0] / E
+
+                # Local
+                loca_aoii_cdf = np.cumsum(loca_aoii_hist)
+                aoii[p, 0] = np.dot(loca_aoii_hist, np.arange(0, M + 1, 1))
+                aoii[p, 1] = np.where(loca_aoii_cdf > 0.99)[0][0]
+                aoii[p, 2] = np.where(loca_aoii_cdf > 0.999)[0][0]
+
+                # Dist
+                dist_aoii_cdf = np.cumsum(dist_aoii_hist)
+                aoii[p, 3] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
+                aoii[p, 4] = np.where(dist_aoii_cdf > 0.99)[0][0]
+                aoii[p, 5] = np.where(dist_aoii_cdf > 0.999)[0][0]
+
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                df = pd.DataFrame(aoii.round(dec), columns=column_titles)
+                df.insert(0, 'P', P_vec)
+                df.to_csv(filename, index=False)
+
+            else:
+                print("\t...already done!")
+                continue
