@@ -168,7 +168,7 @@ if __name__ == '__main__':
                                                     N, max_age, anomaly_rate, SIGMA, aoii_thr,
                                                     C, D, p_01, p11, dt_detection_thr,
                                                     0, P, ETA,
-                                                    np.random.default_rng(1), debug)
+                                                    np.random.default_rng(ep), debug)
                     loca_aoii_hist += loc_tmp[0] / E
                     dist_aoii_hist += dist_tmp[0] / E
 
