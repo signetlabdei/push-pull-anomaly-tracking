@@ -131,6 +131,7 @@ class DistributedAnomalyScheduler:
         # Start iterating until the resources are full
         while free_resources > 0:
             # Iterate through nodes
+            # TODO: Do this the first time and then redo it for the nodes in the cluster where the next_node is
             for node in range(self.num_nodes):
                 # We need to recompute the information gain
                 # Check if the node is not scheduled yet and its priority has not been computed yet
