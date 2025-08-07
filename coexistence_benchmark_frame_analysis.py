@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 import os
-from local_scheduler import generate_local_anomalies, LocalAnomalyScheduler, LocalAnomalyRoundRobinScheduler, LocalAnomalyAlohaScheduler
-from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
+from push_scheduler import generate_anomalies, PushScheduler, PushMAFScheduler, PushAlohaScheduler
+from pull_scheduler import generate_drifts, PullScheduler
 from push_pull_manager import ResourceManager
-from common import N, R, C, D, T, E, M, RNG, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_detection_thr, std_bar, coexistence_folder
+from common import N, R, C, D, T, E, M, RNG, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_realign_thr, std_bar, coexistence_folder
 
 
 def run_episode(local_sched_type: int, dist_sched_type: int,
@@ -29,16 +29,16 @@ def run_episode(local_sched_type: int, dist_sched_type: int,
 
     # Instantiate schedulers
     if local_sched_type == 0:
-        local_sched = LocalAnomalyRoundRobinScheduler(num_nodes)
+        local_sched = PushMAFScheduler(num_nodes)
     elif local_sched_type == 1:
         tx_rate = 0.9 / (num_nodes * anomaly_rate / push_resources)
     elif local_sched_type == 2:
-        local_sched = LocalAnomalyAlohaScheduler(num_nodes, anomaly_rate, push_resources)
+        local_sched = PushAlohaScheduler(num_nodes, anomaly_rate, push_resources)
     else: # local_sched_type == 3:
-        local_sched = LocalAnomalyScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
+        local_sched = PushScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
 
     num_clustered_nodes = num_cluster * cluster_size  # The first clustered nodes have distributed anomalies
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
+    dist_sched = PullScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
 
 
     # Utility variables
@@ -50,9 +50,9 @@ def run_episode(local_sched_type: int, dist_sched_type: int,
     for k in std_bar(range(max_num_frame)):
         ### ANOMALY GENERATION ###
         # Local
-        local_state = generate_local_anomalies(anomaly_rate, local_state, rng)
+        local_state = generate_anomalies(anomaly_rate, local_state, rng)
         # Distributed
-        distributed_state = generate_distributed_anomalies(p_01_vec, p_11, distributed_state, rng)
+        distributed_state = generate_drifts(p_01_vec, p_11, distributed_state, rng)
 
         # Compute distributed anomaly z^{(i)}(k)
         distributed_anomaly = np.asarray(np.sum(distributed_state.reshape(num_clustered_nodes // cluster_size, cluster_size), axis= 1)
@@ -81,7 +81,7 @@ def run_episode(local_sched_type: int, dist_sched_type: int,
         ### PULL-BASED SUBFRAME ###
         # Get pull scheduler
         if dist_sched_type == 0:
-            scheduled = dist_sched.schedule(Q)
+            scheduled = dist_sched.schedule_pps(Q)
         elif dist_sched_type == 1:
             scheduled = dist_sched.schedule_cra(Q)
         else:  # dist_sched_type == 2
@@ -211,7 +211,7 @@ if __name__ == '__main__':
                         loc_tmp, dist_tmp = run_episode(loc_sched, dist_sched,
                                                         M, T, R,
                                                         N, max_age, anomaly_rate, SIGMA, aoii_thr,
-                                                        C, D, p_01, p11, dt_detection_thr,
+                                                        C, D, p_01, p11, dt_realign_thr,
                                                         0, P, ETA,
                                                         RNG, debug)
                         loca_aoii_hist += loc_tmp[0] / E

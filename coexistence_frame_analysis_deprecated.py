@@ -1,31 +1,26 @@
 import numpy as np
 import pandas as pd
 import os
-from local_scheduler import generate_local_anomalies, LocalAnomalyScheduler
-from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
+from push_scheduler import generate_anomalies, PushScheduler
+from pull_scheduler import generate_drifts, PullScheduler
 from push_pull_manager import ResourceManager
-from common import N, R, C, D, T, E, M, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_detection_thr, std_bar, coexistence_folder
-from concurrent.futures import ProcessPoolExecutor
-import time
-from tqdm import tqdm
+from common import N, R, C, D, T, E, M, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_realign_thr, std_bar, coexistence_folder
 
 
-def run_episode(ep: int,
-                num_bins: int, max_num_frame: int, resources: int,
+def run_episode(num_bins: int, max_num_frame: int, resources: int,
                 num_nodes: int, max_age: int, anomaly_rate: float, sigma: float, aoii_thr: int,
                 cluster_size: int, num_cluster: int, p_01_vec: np.array or list, p_11: float, detection_thr: float,
                 manager_type: int, push_resources: int = 2, hysteresis: float = 0.005,
+                rng: np.random.Generator = np.random.default_rng(),
                 debug_mode: bool = False):
     # Instantiate scheduler
     assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
 
-    rng = np.random.default_rng(ep)
-
     num_clustered_nodes = num_cluster * cluster_size  # The first clustered nodes have distributed anomalies
 
     # Instantiate schedulers
-    local_sched = LocalAnomalyScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
+    local_sched = PushScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
+    dist_sched = PullScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
     manager = ResourceManager(manager_type, resources)
     if manager_type == 0:   # Set P beforehand
         manager.set_push_resources(push_resources)
@@ -43,9 +38,9 @@ def run_episode(ep: int,
     for k in std_bar(range(max_num_frame)):
         ### ANOMALY GENERATION ###
         # Local
-        local_state = generate_local_anomalies(anomaly_rate, local_state, rng)
+        local_state = generate_anomalies(anomaly_rate, local_state, rng)
         # Distributed
-        distributed_state = generate_distributed_anomalies(p_01_vec, p_11, distributed_state, rng)
+        distributed_state = generate_drifts(p_01_vec, p_11, distributed_state, rng)
 
         # Compute distributed anomaly z^{(i)}(k)
         distributed_anomaly = np.asarray(np.sum(distributed_state.reshape(num_clustered_nodes // cluster_size, cluster_size), axis= 1)
@@ -69,7 +64,7 @@ def run_episode(ep: int,
 
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
-        scheduled = dist_sched.schedule(Q)
+        scheduled = dist_sched.schedule_pps(Q)
         # Fix local anomalies in scheduled slots
         local_aoii[k, scheduled] = 0
         local_state[scheduled] = 0
@@ -126,8 +121,6 @@ def run_episode(ep: int,
     return (np.histogram(local_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True),
             np.histogram(distributed_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True))
 
-def run_episode_parallel_wrapper(ep_args):
-    return run_episode(*ep_args)
 
 if __name__ == '__main__':
     # Simulation variables
@@ -144,9 +137,9 @@ if __name__ == '__main__':
     column_titles = ['ThetaAvg', 'Theta99', 'Theta999', 'PsiAvg', 'Psi99', 'Psi999']
 
     # Start cases
-    for load in ['hom', 'het']:
+    for load in ['het']: # ['hom', 'het']:
         # Check if files exist and load it if there
-        prefix = 'coexistence_frame_par_' + load
+        prefix = 'coexistence_frame_' + load
         filename = os.path.join(coexistence_folder, prefix + '.csv')
 
         if os.path.exists(filename):
@@ -165,17 +158,19 @@ if __name__ == '__main__':
 
             # Check if data is there
             if overwrite or np.all(np.isnan(aoii[p])):
-                args = (M, T, R, N, max_age, anomaly_rate, SIGMA, aoii_thr,
-                        C, D, p_01, p11, dt_detection_thr, 0, P, ETA)
-
-                start_time = time.time()
-                with ProcessPoolExecutor() as executor:
-                    futures = [executor.submit(run_episode, ep, *args) for ep in range(E)]
-                    results = [f.result() for f in futures]
-
-                # Separate and average the results
-                loca_aoii_hist = np.mean(np.array([res[0][0] for res in results]), axis=0)
-                dist_aoii_hist = np.mean(np.array([res[1][0] for res in results]), axis=0)
+                if P != 2:
+                    continue
+                loca_aoii_hist = np.zeros(M + 1)
+                dist_aoii_hist = np.zeros(M + 1)
+                for ep in range(E):
+                    print(f'\tEpisode: {ep:02d}/{E-1:02d}')
+                    loc_tmp, dist_tmp = run_episode(M, T, R,
+                                                    N, max_age, anomaly_rate, SIGMA, aoii_thr,
+                                                    C, D, p_01, p11, dt_realign_thr,
+                                                    0, P, ETA,
+                                                    np.random.default_rng(ep), debug)
+                    loca_aoii_hist += loc_tmp[0] / E
+                    dist_aoii_hist += dist_tmp[0] / E
 
                 # Local
                 loca_aoii_cdf = np.cumsum(loca_aoii_hist)
@@ -193,10 +188,6 @@ if __name__ == '__main__':
                 df = pd.DataFrame(aoii.round(dec), columns=column_titles)
                 df.insert(0, 'P', P_vec)
                 df.to_csv(filename, index=False)
-
-                # Print time
-                elapsed = time.time() - start_time
-                print(f"\t...done in {elapsed:.3f} seconds")
 
             else:
                 print("\t...already done!")

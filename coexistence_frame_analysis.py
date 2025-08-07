@@ -1,26 +1,52 @@
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
-import os
-from local_scheduler import generate_local_anomalies, LocalAnomalyScheduler
-from distributed_scheduler import generate_distributed_anomalies, DistributedAnomalyScheduler
+
+from push_scheduler import generate_anomalies, PushScheduler
+from pull_scheduler import generate_drifts, PullScheduler
 from push_pull_manager import ResourceManager
-from common import N, R, C, D, T, E, M, RNG, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_detection_thr, std_bar, coexistence_folder
+import common as cmn
 
-
-def run_episode(num_bins: int, max_num_frame: int, resources: int,
-                num_nodes: int, max_age: int, anomaly_rate: float, sigma: float, aoii_thr: int,
-                cluster_size: int, num_cluster: int, p_01_vec: np.array or list, p_11: float, detection_thr: float,
+def run_episode(episode_idx: int,
+                num_bins: int, max_num_frame: int, resources: int,
+                num_nodes: int, max_age: int, anomaly_rate: float, collision_thr: float, aoii_thr: int,
+                cluster_size: int, num_cluster: int, p_01_vec: np.ndarray, p_11: float, realign_thr: float,
                 manager_type: int, push_resources: int = 2, hysteresis: float = 0.005,
-                rng: np.random.Generator = np.random.default_rng(),
                 debug_mode: bool = False):
+    r"""Run a single episode of a push-pull scenario. Parallelization allowed.
+
+    :param episode_idx: The index of the episode to run.
+    :param num_bins: The number of bins to use for the output histogram.
+    :param max_num_frame: The maximum number of frames to simulate.
+    :param resources: The amount of resources available :math:`R`.
+    :param num_nodes: The number of nodes :math:`N`.
+    :param max_age: The maximum age that can be saved for anomalies.
+    :param anomaly_rate: The anomaly rate :math:`\rho_a`.
+    :param collision_thr: The collision threshold :math:`\sigma`.
+    :param aoii_thr: The AoII risk threshold :math:`\hat{\theta}`.
+    :param cluster_size: The size of the clusters :math:`C`.
+    :param num_cluster: The number of clusters :math:`D`.
+    :param p_01_vec: The probability of detecting a drift (0 to 1) for each node in a cluster.
+    :param p_11: The probability of remaining in the drift state (equal for each node in the cluster).
+    :param realign_thr: The DT re-alignment threshold :math:`\nu_{reset}`.
+    :param manager_type: The type of manager to use (0: fixed resources, 1: RSM, 2:SSM).
+    :param push_resources: The amount of resources available for push if manager_type = 0 :math:`P` or the minimum resources :math:`R_{min}` otherwise.
+    :param hysteresis: The SSM hysteresis threshold :math:`\eta`. Used only if manager_type = 2.
+    :param debug_mode: If true, run in debug mode.
+    :returns Tuple containing: (histogram of anomaly AoII, histogram of DT drift AoII)
+    """
     # Instantiate scheduler
-    assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
+    assert len(p_01_vec) == cluster_size, "The probability of detecting a drift has to be the size of the cluster"
+
+    rng = np.random.default_rng(episode_idx)
 
     num_clustered_nodes = num_cluster * cluster_size  # The first clustered nodes have distributed anomalies
 
     # Instantiate schedulers
-    local_sched = LocalAnomalyScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
-    dist_sched = DistributedAnomalyScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
+    push_scheduler = PushScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
+    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, p_01_vec, p_11, rng, debug_mode)
     manager = ResourceManager(manager_type, resources)
     if manager_type == 0:   # Set P beforehand
         manager.set_push_resources(push_resources)
@@ -30,50 +56,50 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int,
             manager.set_hysteresis(hysteresis)
 
     # Utility variables
-    local_state = np.zeros(num_nodes)
-    distributed_state = np.zeros(num_clustered_nodes, dtype=int)  # y(k) in the paper
-    local_aoii = np.zeros((max_num_frame, num_nodes))
-    distributed_aoii = np.zeros((max_num_frame, num_cluster))
+    anomaly_state = np.zeros(num_nodes)
+    drift_state = np.zeros(num_clustered_nodes, dtype=int)  # y(k) in the paper
+    anomaly_aoii = np.zeros((max_num_frame, num_nodes))
+    drift_aoii = np.zeros((max_num_frame, num_cluster))
 
-    for k in std_bar(range(max_num_frame)):
+    for k in cmn.std_bar(range(max_num_frame)):
         ### ANOMALY GENERATION ###
         # Local
-        local_state = generate_local_anomalies(anomaly_rate, local_state, rng)
+        anomaly_state = generate_anomalies(anomaly_rate, anomaly_state, rng)
         # Distributed
-        distributed_state = generate_distributed_anomalies(p_01_vec, p_11, distributed_state, rng)
+        drift_state = generate_drifts(p_01_vec, p_11, drift_state, rng)
 
         # Compute distributed anomaly z^{(i)}(k)
-        distributed_anomaly = np.asarray(np.sum(distributed_state.reshape(num_clustered_nodes // cluster_size, cluster_size), axis= 1)
+        drift_detected = np.asarray(np.sum(drift_state.reshape(num_clustered_nodes // cluster_size, cluster_size), axis= 1)
                                          >= cluster_size / 2, dtype=int)
 
         ### COMPUTE AOII ###
-        local_aoii[k, :] = local_aoii[k - 1, :] + local_state if k > 0 else local_state
-        distributed_aoii[k, :] = distributed_aoii[k - 1, :] + distributed_anomaly if k > 0 else distributed_anomaly
+        anomaly_aoii[k, :] = anomaly_aoii[k - 1, :] + anomaly_state if k > 0 else anomaly_state
+        drift_aoii[k, :] = drift_aoii[k - 1, :] + drift_detected if k > 0 else drift_detected
 
         ### UPDATE SCHEDULER PRIORS ###
-        local_sched.update_prior()
-        dist_sched.update_prior()
+        push_scheduler.update_prior()
+        pull_scheduler.update_prior()
 
         ### SUBFRAME ALLOCATION ###
-        local_risk = local_sched.get_risk(aoii_thr)
-        dist_risk = dist_sched.get_average_risk
-        P, Q = manager.allocate_resources(local_risk, dist_risk)  # Allocate resources
+        anomaly_risk = push_scheduler.get_risk(aoii_thr)
+        drift_risk = pull_scheduler.get_average_risk
+        P, Q = manager.allocate_resources(anomaly_risk, drift_risk)  # Allocate resources
         if debug_mode:
-            print('local_risk', local_risk, 'dist_risk', dist_risk, 'ratio', local_risk / dist_risk)
+            print('anomaly_risk', anomaly_risk, 'drift_risk', drift_risk, 'ratio', anomaly_risk / drift_risk)
             print('P', P, 'Q', Q)
 
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
-        scheduled = dist_sched.schedule(Q)
+        scheduled = pull_scheduler.schedule_pps(Q)
         # Fix local anomalies in scheduled slots
-        local_aoii[k, scheduled] = 0
-        local_state[scheduled] = 0
+        anomaly_aoii[k, scheduled] = 0
+        anomaly_state[scheduled] = 0
 
         ### PUSH-BASED SUBFRAME ###
         # Get local anomaly threshold
-        threshold = local_sched.schedule(P, sigma, scheduled)
+        threshold = push_scheduler.schedule(P, collision_thr, scheduled)
         # Select random slots for active nodes
-        choices = rng.integers(1, P + 1, num_nodes) * np.asarray(local_aoii[k, :] > threshold)
+        choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > threshold)
         outcome = np.zeros(P, dtype=int)
         successful_push = []
         for p in range(1, P + 1):
@@ -83,61 +109,64 @@ def run_episode(num_bins: int, max_num_frame: int, resources: int,
                     if chosen[0] < num_clustered_nodes:
                         successful_push.append(chosen[0])
                     outcome[p - 1] = chosen[0] + 1
-                    local_state[chosen[0]] = 0
-                    local_aoii[k, chosen[0]] = 0
+                    anomaly_state[chosen[0]] = 0
+                    anomaly_aoii[k, chosen[0]] = 0
                 else:
                     outcome[p - 1] = -1
 
         ### POST-FRAME UPDATE ###
         # Local and distributed anomaly belief update
-        local_sched.update_psi(threshold, outcome)
+        push_scheduler.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
-        cluster_in_anomaly = dist_sched.update_posterior_pmf(successful, distributed_state[successful],
-                                                             detection_thr)
+        cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful,
+                                                                 drift_state[successful],
+                                                                 realign_thr)
 
         ### LOGGING ###
         if debug_mode:
-            print('s', local_state)
+            print('s', anomaly_state)
             print('t', threshold)
             print('c', choices)
             print('out', outcome)
-            print('la', local_aoii[k, :])
+            print('la', anomaly_aoii[k, :])
             print('sch', scheduled)
-            print('o', distributed_state[successful])
-            print('y', distributed_state)
-            print('dr', dist_risk)
-            print('z', distributed_anomaly)
-            print('da', distributed_aoii[k, :])
+            print('o', drift_state[successful])
+            print('y', drift_state)
+            print('dr', drift_risk)
+            print('z', drift_detected)
+            print('da', drift_aoii[k, :])
             input("Press Enter to continue...")
 
         # Reset state, anomaly and aoii for cluster where an anomaly was found
         for cluster in cluster_in_anomaly:
-            distributed_state[dist_sched.cluster_map == cluster] = 0
-            distributed_anomaly[cluster] = 0
-            distributed_aoii[k, cluster] = 0
+            drift_state[pull_scheduler.cluster_map == cluster] = 0
+            drift_detected[cluster] = 0
+            drift_aoii[k, cluster] = 0
 
-    local_aoii_tot = np.reshape(local_aoii, max_num_frame * num_nodes)
-    distributed_aoii_tot = np.reshape(distributed_aoii, max_num_frame * num_cluster)
-    return (np.histogram(local_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True),
-            np.histogram(distributed_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True))
-
+    anomaly_aoii_tot = np.reshape(anomaly_aoii, max_num_frame * num_nodes)
+    drift_aoii_tot = np.reshape(drift_aoii, max_num_frame * num_cluster)
+    return (np.histogram(anomaly_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True),
+            np.histogram(drift_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True))
 
 if __name__ == '__main__':
+    # Parse arguments, if any
+    parallel, savedir, debug, overwrite = cmn.common_parser()
+    if savedir is not None:
+        coexistence_folder = savedir
+    else:
+        coexistence_folder = cmn.coexistence_folder
+
     # Simulation variables
     dec = 6
-    debug = False
-    overwrite = True
-
-    # Parameters
     P_vec = np.arange(2, 19)
     aoii_thr = 2
-
+    manager = 0
 
     # Order of saving data
     column_titles = ['ThetaAvg', 'Theta99', 'Theta999', 'PsiAvg', 'Psi99', 'Psi999']
 
     # Start cases
-    for load in ['het']: # ['hom', 'het']:
+    for load in ['hom', 'het']:
         # Check if files exist and load it if there
         prefix = 'coexistence_frame_' + load
         filename = os.path.join(coexistence_folder, prefix + '.csv')
@@ -145,11 +174,11 @@ if __name__ == '__main__':
         if os.path.exists(filename):
             aoii = pd.read_csv(filename).iloc[:, 1:].to_numpy()
         else:
-            aoii = np.full((len(P_vec), 6), np.nan)
+            aoii = np.full((len(P_vec), len(column_titles)), np.nan)
 
         # Get load
         anomaly_rate = 0.03 if load == 'hom' else 0.035
-        p_01 = het_p01 * het_multipliers[2] if load == 'hom' else p01_25
+        p_01 = cmn.het_p01 * cmn.het_multipliers[2] if load == 'hom' else cmn.p01_25
 
         # Start iterations
         for p, P in enumerate(P_vec):
@@ -158,36 +187,44 @@ if __name__ == '__main__':
 
             # Check if data is there
             if overwrite or np.all(np.isnan(aoii[p])):
-                if P != 2:
-                    continue
-                loca_aoii_hist = np.zeros(M + 1)
-                dist_aoii_hist = np.zeros(M + 1)
-                for ep in range(E):
-                    print(f'\tEpisode: {ep:02d}/{E-1:02d}')
-                    loc_tmp, dist_tmp = run_episode(M, T, R,
-                                                    N, max_age, anomaly_rate, SIGMA, aoii_thr,
-                                                    C, D, p_01, p11, dt_detection_thr,
-                                                    0, P, ETA,
-                                                    np.random.default_rng(ep), debug)
-                    loca_aoii_hist += loc_tmp[0] / E
-                    dist_aoii_hist += dist_tmp[0] / E
+                args = (cmn.M, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr,
+                        cmn.C, cmn.D, p_01, cmn.p11, cmn.dt_realign_thr, manager, P, cmn.ETA, debug)
 
-                # Local
-                loca_aoii_cdf = np.cumsum(loca_aoii_hist)
-                aoii[p, 0] = np.dot(loca_aoii_hist, np.arange(0, M + 1, 1))
-                aoii[p, 1] = np.where(loca_aoii_cdf > 0.99)[0][0]
-                aoii[p, 2] = np.where(loca_aoii_cdf > 0.999)[0][0]
+                start_time = time.time()
+                if parallel:
+                    with ProcessPoolExecutor() as executor:
+                        futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
+                        results = [f.result() for f in futures]
+                else:
+                    results = []
+                    for ep in range(cmn.E):
+                        print(f'\tEpisode: {ep:02d}/{cmn.E - 1:02d}')
+                        results.append(run_episode(ep, *args))
 
-                # Dist
-                dist_aoii_cdf = np.cumsum(dist_aoii_hist)
-                aoii[p, 3] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
-                aoii[p, 4] = np.where(dist_aoii_cdf > 0.99)[0][0]
-                aoii[p, 5] = np.where(dist_aoii_cdf > 0.999)[0][0]
+                # Separate and average the results
+                anom_aoii_hist = np.mean(np.array([res[0][0] for res in results]), axis=0)
+                drift_aoii_hist = np.mean(np.array([res[1][0] for res in results]), axis=0)
+
+                # Anomalies
+                anom_aoii_cdf = np.cumsum(anom_aoii_hist)
+                aoii[p, 0] = np.dot(anom_aoii_hist, np.arange(0, cmn.M + 1, 1))
+                aoii[p, 1] = np.where(anom_aoii_cdf > 0.99)[0][0]
+                aoii[p, 2] = np.where(anom_aoii_cdf > 0.999)[0][0]
+
+                # DT drifts
+                drift_aoii_cdf = np.cumsum(drift_aoii_hist)
+                aoii[p, 3] = np.dot(drift_aoii_hist, np.arange(0, cmn.M + 1, 1))
+                aoii[p, 4] = np.where(drift_aoii_cdf > 0.99)[0][0]
+                aoii[p, 5] = np.where(drift_aoii_cdf > 0.999)[0][0]
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 df = pd.DataFrame(aoii.round(dec), columns=column_titles)
                 df.insert(0, 'P', P_vec)
                 df.to_csv(filename, index=False)
+
+                # Print time
+                elapsed = time.time() - start_time
+                print(f"\t...done in {elapsed:.3f} seconds")
 
             else:
                 print("\t...already done!")
