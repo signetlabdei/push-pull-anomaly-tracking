@@ -35,7 +35,7 @@ def run_episode(episode_idx: int,
     :param push_resources: The amount of resources available for push if manager_type = 0 :math:`P` or the minimum resources :math:`R_{min}` otherwise.
     :param hysteresis: The SSM hysteresis threshold :math:`\eta`. Used only if manager_type = 2.
     :param debug_mode: If true, run in debug mode.
-    :returns Tuple containing: (histogram of anomaly AoII, histogram of DT drift AoII)
+    :return: Tuple containing: (histogram of anomaly AoII, histogram of DT drift AoII)
     """
     # Instantiate scheduler
     assert len(p_01_vec) == cluster_size, "The probability of detecting a drift has to be the size of the cluster"
