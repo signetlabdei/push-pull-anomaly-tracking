@@ -2,7 +2,7 @@ import numpy as np
 import itertools
 
 # Distributed
-def generate_distributed_anomalies(p_01: np.ndarray, p_11: float, state, rng: np.random.Generator = np.random.default_rng()):
+def generate_drifts(p_01: np.ndarray, p_11: float, state, rng: np.random.Generator = np.random.default_rng()):
     cluster_size = len(p_01)
     num_nodes = len(state)
     new_state = np.zeros(num_nodes)
@@ -22,7 +22,7 @@ def generate_distributed_anomalies(p_01: np.ndarray, p_11: float, state, rng: np
         new_state[node] = rng.random() < p
     return new_state
 
-class DistributedAnomalyScheduler:
+class PullScheduler:
     num_nodes = 0
     cluster_size = 0
     num_clusters = 0
@@ -118,7 +118,7 @@ class DistributedAnomalyScheduler:
         # Try the full vectorial version
 
 
-    def schedule(self, pull_resources: int) -> np.ndarray:
+    def schedule_pps(self, pull_resources: int) -> np.ndarray:
         """Scheduling Pull-Push Scheduler method for nodes
 
         :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
@@ -205,7 +205,7 @@ class DistributedAnomalyScheduler:
         return scheduled
 
     def update_posterior_pmf(self,
-                             scheduled: list or np.ndarray,
+                             scheduled: np.ndarray,
                              observations: np.ndarray,
                              detection_threshold: float) -> list:
         """Update map_pmf according to (16)
@@ -320,27 +320,6 @@ class DistributedAnomalyScheduler:
         #         pmf[state_idx] = 0
         pmf /= np.sum(pmf)
         return pmf
-
-    @staticmethod
-    def index_to_cluster_state(idx, cluster_size) -> np.ndarray:
-        """Translator from an index in the pmf to a cluster state.
-
-        :param idx: the index
-        :param cluster_size: the number of nodes in the cluster
-        :return: cluster state vector
-        """
-        state = np.array(list(np.binary_repr(idx)), dtype=int)
-        return np.pad(state, cluster_size - len(state))[:cluster_size]
-
-    @staticmethod
-    def cluster_state_to_index(cluster_state) -> int:
-        """Translator from a cluster state to an index in the pmf.
-
-        :param cluster_state: D-dimensional integer vector
-        :return: cluster state vector index (from 0 to 2^C -1)
-        """
-        state_str = ''.join(str(x) for x in cluster_state)
-        return int(state_str, base=2)
 
     @staticmethod
     def binary_entropy(prob_vector) -> float:
