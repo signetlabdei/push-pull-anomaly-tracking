@@ -11,6 +11,15 @@ def index_to_cluster_state(idx, cluster_size) -> np.ndarray:
     state = np.array(list(np.binary_repr(idx)), dtype=int)
     return np.pad(state, cluster_size - len(state))[:cluster_size]
 
+def cluster_state_to_index(cluster_state) -> int:
+    """Translator from a cluster state to an index in the pmf.
+
+    :param cluster_state: D-dimensional integer vector
+    :return: cluster state vector index (from 0 to 2^C -1)
+    """
+    state_str = ''.join(str(x) for x in cluster_state)
+    return int(state_str, base=2)
+
 def init_transition_matrix(cluster_size, p_01, p_11) -> np.ndarray:
     """Initialize the transition matrix given the initial transition probabilities
 
