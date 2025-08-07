@@ -1,15 +1,24 @@
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
-import os
-from common import M, C, D, T, E, Q_vec, het_p01, het_multipliers, hom_p01, hom_multipliers, p11, dt_detection_thr, pull_folder, dist_schedulers
+
 from pull_load_analysis import run_episode
+import common as cmn
 
 
 if __name__ == '__main__':
+    # Parse arguments, if any
+    parallel, savedir, debug, overwrite = cmn.common_parser()
+    if savedir is not None:
+        pull_folder = savedir
+    else:
+        pull_folder = cmn.pull_folder
     # Simulation variables
     dec = 6
-    rng = np.random.default_rng(0)
-    schedulers = dist_schedulers
+    Q_vec = np.arange(5, 21)
+    schedulers = cmn.pull_schedulers_name
     debug_mode = False
     overwrite = False
 
@@ -35,7 +44,7 @@ if __name__ == '__main__':
             prob_999 = np.full((len(Q_vec), len(schedulers)), np.nan)
 
         # Get load
-        p_01 = het_p01 * het_multipliers[2] if clu == 'het' else hom_p01 * hom_multipliers[2]
+        p_01 = cmn.het_p01 * cmn.het_multipliers[2] if clu == 'het' else cmn.hom_p01 * cmn.hom_multipliers[2]
 
         for s, _ in enumerate(schedulers):
             for q, Q in enumerate(Q_vec):
@@ -44,23 +53,39 @@ if __name__ == '__main__':
 
                 # Check if data is there
                 if overwrite or np.isnan(prob_avg[q, s]):
-                    dist_aoii_hist = np.zeros(M + 1)
-                    for ep in range(E):
-                        print(f'\tEpisode: {ep:02d}/{E-1:02d}')
-                        dist_aoii_hist += run_episode(s, M, C, D, T, Q,
-                                                      p_01, p11, dt_detection_thr,
-                                                      rng,
-                                                      debug_mode)[0] / E
-                    dist_aoii_cdf = np.cumsum(dist_aoii_hist)
+                    args = (s, cmn.M, cmn.T, cmn.C, cmn.D, Q,
+                            p_01, cmn.p11, cmn.dt_realign_thr, debug)
+
+                    start_time = time.time()
+                    if parallel:
+                        with ProcessPoolExecutor() as executor:
+                            futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
+                            results = [f.result() for f in futures]
+                    else:
+                        results = []
+                        for ep in range(cmn.E):
+                            print(f'\tEpisode: {ep:02d}/{cmn.E - 1:02d}')
+                            results.append(run_episode(ep, *args))
+
+                    # Average the results
+                    drift_aoii_hist = np.mean(np.array([res[0] for res in results]), axis=0)
+
+                    # Divide data
+                    dist_aoii_cdf = np.cumsum(drift_aoii_hist)
                     prob_99[q, s] = np.where(dist_aoii_cdf > 0.99)[0][0]
                     prob_999[q, s] = np.where(dist_aoii_cdf > 0.999)[0][0]
-                    prob_avg[q, s] = np.dot(dist_aoii_hist, np.arange(0, M + 1, 1))
+                    prob_avg[q, s] = np.dot(drift_aoii_hist, np.arange(0, cmn.M + 1, 1))
 
                     # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                     for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
                         df = pd.DataFrame(res.round(dec), columns=schedulers)
                         df.insert(0, 'Q', Q_vec)
                         df.to_csv(file, index=False)
+
+                    # Print time
+                    elapsed = time.time() - start_time
+                    print(f"\t...done in {elapsed:.3f} seconds")
+
                 else:
                     print("\t...already done!")
                     continue
