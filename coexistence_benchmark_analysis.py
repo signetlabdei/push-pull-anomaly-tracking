@@ -7,7 +7,6 @@ import pandas as pd
 from push_scheduler import generate_anomalies, PushScheduler, PushMAFScheduler, PushAlohaScheduler
 from pull_scheduler import generate_drifts, PullScheduler
 from push_pull_manager import ResourceManager
-from common import N, R, C, D, T, E, M, RNG, max_age, SIGMA, ETA, het_p01, het_multipliers, p01_25, p11, dt_realign_thr, std_bar, coexistence_folder
 import common as cmn
 
 
@@ -76,7 +75,7 @@ def run_episode(episode_idx: int,
     anomaly_aoii = np.zeros((max_num_frame, num_nodes))
     drift_aoii = np.zeros((max_num_frame, num_cluster))
 
-    for k in std_bar(range(max_num_frame)):
+    for k in cmn.std_bar(range(max_num_frame)):
         ### ANOMALY GENERATION ###
         # Local
         anomaly_state = generate_anomalies(anomaly_rate, anomaly_state, rng)
