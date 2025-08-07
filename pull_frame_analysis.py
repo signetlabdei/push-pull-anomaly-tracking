@@ -18,7 +18,7 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     Q_vec = np.arange(5, 21)
-    schedulers = cmn.pull_schedulers_name
+    schedulers = cmn.pull_scheduler_names
     debug_mode = False
     overwrite = False
 

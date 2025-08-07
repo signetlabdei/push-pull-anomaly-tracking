@@ -29,7 +29,7 @@ def run_episode(episode_idx: int,
     :param p_11: The probability of remaining in the drift state (equal for each node in the cluster).
     :param realign_thr: The DT re-alignment threshold :math:`\nu_{reset}`.
     :param debug_mode: If true, run in debug mode.
-    :returns histogram of DT drift AoII.
+    :return: histogram of DT drift AoII.
     """
     # Instantiate scheduler
     assert len(p_01_vec) == cluster_size, "The probability of detecting an anomaly has to be the size of the cluster"
@@ -104,7 +104,7 @@ if __name__ == '__main__':
         pull_folder = cmn.pull_folder
     # Simulation variables
     dec = 6
-    schedulers = cmn.pull_schedulers_name
+    schedulers = cmn.pull_scheduler_names
     Q = 10
     multipliers = np.linspace(cmn.het_multipliers[0], cmn.het_multipliers[-1], 30)
     absorption_rates = compute_absorption_rate(cmn.het_p01, cmn.p11, multipliers, show=False)
@@ -117,19 +117,19 @@ if __name__ == '__main__':
     filename_cdf = os.path.join(pull_folder, prefix + '_cdf.csv')
 
     if os.path.exists(filename_avg) and not overwrite:
-        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy()
+        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy().T
     else:
         prob_avg = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_99) and not overwrite:
-        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy()
+        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy().T
     else:
         prob_99 = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_999) and not overwrite:
-        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy()
+        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy().T
     else:
         prob_999 = np.full((len(schedulers), len(multipliers)), np.nan)
     if os.path.exists(filename_cdf) and not overwrite:
-        cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy()
+        cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy().T
     else:
         cdf = np.full((len(multipliers), cmn.M + 1), np.nan)
 
