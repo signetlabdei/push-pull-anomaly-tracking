@@ -15,6 +15,7 @@ push_frame_analysis.py
 coexistence_frame_analysis.py
 ```
 will perform the simulation varying the available resources for pull-only, push-only, and push-pull scenario.
+Using the ``--parallel`` flag will run the different episodes in parallel.
 
 Note that the scripts should be run with the flag ```--override``` to overwrite the ``.csv`` results into the ``data`` folder. Alternatively, you can use the ``--savedir [path/to/folder/]`` to save the data in a custom folder.
 
