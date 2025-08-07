@@ -128,10 +128,6 @@ if __name__ == '__main__':
         prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy().T
     else:
         prob_999 = np.full((len(schedulers), len(multipliers)), np.nan)
-    if os.path.exists(filename_cdf) and not overwrite:
-        cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy().T
-    else:
-        cdf = np.full((len(multipliers), cmn.M + 1), np.nan)
 
     for s, _ in enumerate(schedulers):
         for m, mult in enumerate(multipliers):
@@ -163,13 +159,6 @@ if __name__ == '__main__':
                 prob_99[s, m] = np.where(drift_aoii_cdf > 0.99)[0][0]
                 prob_999[s, m] = np.where(drift_aoii_cdf > 0.999)[0][0]
                 prob_avg[s, m] = np.dot(drift_aoii_hist, np.arange(0, cmn.M + 1, 1))
-
-                # Save CDF for the PPS only
-                if s == 0:
-                    cdf[m] = drift_aoii_cdf
-                    cdf_df = pd.DataFrame(cdf.T, columns=absorption_rates.round(dec))
-                    cdf_df.insert(0, 'Psi', np.arange(cmn.M + 1))
-                    cdf_df.to_csv(filename_cdf, index=False)
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
