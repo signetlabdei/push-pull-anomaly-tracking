@@ -1,128 +1,87 @@
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
-from local_scheduler import LocalAnomalyScheduler, LocalAnomalyRoundRobinScheduler, LocalAnomalyAlohaScheduler
+import pandas as pd
 
-
-def run_episode(sched_type, M, P, T, nodes, max_age, local_anomaly_rate, p_c, mode, debug_mode):
-    # Instantiate scheduler
-    if (sched_type == 0):
-        local_sched = LocalAnomalyRoundRobinScheduler(nodes)
-    if (sched_type == 1):
-        # Maintain load close to 1
-        tx_rate = 0.9 / (nodes * local_anomaly_rate / P)
-    if (sched_type == 2):
-        local_sched = LocalAnomalyAlohaScheduler(nodes, local_anomaly_rate, P)
-    if (sched_type == 3):
-        local_sched = LocalAnomalyScheduler(nodes, max_age, local_anomaly_rate, mode, debug_mode)
-    local_state = np.zeros(nodes)
-    aoii = np.zeros((T, nodes))
-
-    for t in range(T):
-        ### ANOMALY GENERATION ###
-        local_state = np.minimum(np.ones(nodes), local_state + np.asarray(np.random.rand(nodes) < local_anomaly_rate))
-
-        ### COMPUTE AOII ###
-        if t > 0:
-            aoii[t, :] = aoii[t - 1, :] + local_state
-        else:
-            aoii[t, :] = local_state
-
-        ### UPDATE SCHEDULER PRIORS ###
-        local_sched.update_prior()
-
-
-
-        ### PUSH-BASED SUBFRAME ###
-        if (sched_type == 0):
-            outcome = local_sched.schedule(P, [])
-            local_state[outcome] = 0
-            aoii[t, outcome] = 0
-        else:
-            if (sched_type == 1):
-                choices = np.random.randint(1, P + 1, nodes) * np.asarray(aoii[t, :] > 0) * (np.random.rand(nodes) < tx_rate)
-            if (sched_type == 2):
-                choices = np.random.randint(1, P + 1, nodes) * np.asarray(aoii[t, :] > 0) * local_sched.schedule()
-            if (sched_type == 3):
-                # Get local anomaly threshold
-                threshold = local_sched.schedule(P, p_c, [])
-                # Select random slots for active nodes
-                choices = np.random.randint(1, P + 1, nodes) * np.asarray(aoii[t, :] > threshold)
-
-            outcome = np.zeros(P, dtype=int)
-            for p in range(1, P + 1):
-                chosen = np.where(choices == p)[0]
-                if chosen.size != 0:
-                    if chosen.size == 1:
-                        outcome[p - 1] = chosen[0] + 1
-                        local_state[chosen[0]] = 0
-                        aoii[t, chosen[0]] = 0
-                    else:
-                        outcome[p - 1] = -1
-
-
-        ### POST-FRAME UPDATE ###
-        # Local and distributed anomaly belief update
-        if (sched_type == 2):
-            local_sched.update_rate(outcome)
-        if (sched_type == 3):
-            local_sched.update_psi(threshold, outcome)
-
-        ### LOGGING ###
-        if np.mod(t,1000) == 0:
-            print('Step:', t)
-
-    # Plotting local anomaly AoII
-    aoii_tot = np.reshape(aoii, T * nodes)
-    return np.histogram(aoii_tot, bins=M + 1, range=(-0.5, M + 0.5), density=True)
-
-
-
-def main():
-    # Main system parameters
-    nodes = 100
-    max_age = 100
-    M = 100     # S = 20
-    P = 10
-    T = int(1e4)
-    episodes = 10
-    mode = 1
-    debug_mode = False
-
-    # Anomaly and algorithm parameters
-    rates = np.arange(0.01, 0.051, 0.001)
-    p_c = 0.2
-
-    prob_avg = np.zeros((5, len(rates)))
-    prob_95 = np.zeros((5, len(rates)))
-    prob_99 = np.zeros((5, len(rates)))
-    prob_999 = np.zeros((5, len(rates)))
-
-    prob_avg[0, :] = rates * 100
-    prob_95[0, :] = rates * 100
-    prob_99[0, :] = rates * 100
-    prob_999[0, :] = rates * 100
-
-    for pi in range(4):
-        print('Scheduler: ', pi)
-        for r in range(len(rates)):
-            rate = rates[r]
-            print('Rate: ', rate)
-            aoii_hist = np.zeros(M + 1)
-            for ep in range(episodes):
-                print('Episode: ', ep)
-                aoii_hist += run_episode(pi, M, P, T, nodes, max_age, rate, p_c, mode, debug_mode)[0] / episodes
-            aoii_cdf = np.cumsum(aoii_hist)
-            prob_95[pi+1, r] = np.where(aoii_cdf > 0.95)[0][0]
-            prob_99[pi+1, r] = np.where(aoii_cdf > 0.99)[0][0]
-            prob_999[pi+1, r] = np.where(aoii_cdf > 0.999)[0][0]
-            prob_avg[pi+1, r] = np.dot(aoii_hist, np.arange(0, M + 1, 1))
-
-            np.savetxt("push_load_avg.csv", np.transpose(prob_avg), delimiter=",")
-            np.savetxt("push_load_95.csv", np.transpose(prob_95), delimiter=",")
-            np.savetxt("push_load_99.csv", np.transpose(prob_99), delimiter=",")
-            np.savetxt("push_load_999.csv", np.transpose(prob_999), delimiter=",")
-
+from push_frame_analysis import run_episode
+import common as cmn
 
 
 if __name__ == "__main__":
-    main()
+    # Parse arguments, if any
+    parallel, savedir, debug, overwrite = cmn.common_parser()
+    if savedir is not None:
+        push_folder = savedir
+    else:
+        push_folder = cmn.push_folder
+    # Simulation variables
+    dec = 6
+    schedulers = cmn.push_scheduler_names
+    pps_scheduler_mode = 1
+    P = 10
+    # Anomaly and algorithm parameters
+    rates = np.arange(0.01, 0.051, 0.001)
 
+    # Check if files exist and load it if there
+    prefix = 'push_load'
+    filename_avg = os.path.join(push_folder, prefix + '_avg.csv')
+    filename_99 = os.path.join(push_folder, prefix + '_99.csv')
+    filename_999 = os.path.join(push_folder, prefix + '_999.csv')
+
+    if os.path.exists(filename_avg) and not overwrite:
+        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy().T
+    else:
+        prob_avg = np.full((len(schedulers), len(rates)), np.nan)
+    if os.path.exists(filename_99) and not overwrite:
+        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy().T
+    else:
+        prob_99 = np.full((len(schedulers), len(rates)), np.nan)
+    if os.path.exists(filename_999) and not overwrite:
+        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy().T
+    else:
+        prob_999 = np.full((len(schedulers), len(rates)), np.nan)
+
+    for s, scheduler in enumerate(schedulers):
+        for r, rate in enumerate(rates):
+            # Logging #
+            print(f"Scheduler: {scheduler}; rate={rate*100:.1f}. Status:")
+
+            # Check if data is there
+            if overwrite or np.isnan(prob_avg[s, r]):
+                args = (s, cmn.M, P, cmn.T, cmn.N, cmn.max_age,
+                        rate, cmn.SIGMA, pps_scheduler_mode, debug)
+
+                start_time = time.time()
+                if parallel:
+                    with ProcessPoolExecutor() as executor:
+                        futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
+                        results = [f.result() for f in futures]
+                else:
+                    results = []
+                    for ep in range(cmn.E):
+                        print(f'\tEpisode: {ep:02d}/{cmn.E - 1:02d}')
+                        results.append(run_episode(ep, *args))
+
+                # Average the results
+                anomaly_aoii_hist = np.mean(np.array([res[0] for res in results]), axis=0)
+
+                # Divide data
+                anomaly_aoii_cdf = np.cumsum(anomaly_aoii_hist)
+                prob_99[s, r] = np.where(anomaly_aoii_cdf > 0.99)[0][0]
+                prob_999[s, r] = np.where(anomaly_aoii_cdf > 0.999)[0][0]
+                prob_avg[s, r] = np.dot(anomaly_aoii_hist, np.arange(0, cmn.M + 1, 1))
+
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
+                    df = pd.DataFrame(res.T.round(dec), columns=schedulers)
+                    df.insert(0, 'rate', rates * 100)
+                    df.to_csv(file, index=False)
+
+                # Print time
+                elapsed = time.time() - start_time
+                print(f"\t...done in {elapsed:.3f} seconds")
+
+            else:
+                print("\t...already done!")
+                continue
