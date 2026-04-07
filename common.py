@@ -14,11 +14,12 @@ coexistence_folder = os.path.join(data_folder, 'coexistence')
 
 # Main system parameters
 M = 100             # Num bins histogram
+bins = 100000       # Histogram bins (Kalman)
 N = 100             # Num nodes N_a
 C = 4               # cluster size
 D = 20              # Num clusters
 T = int(1e3)        # Num frames
-E = 100             # num episodes
+E = 10              # num episodes
 RNG = np.random.default_rng(0)  # Random Number Generator
 
 # Resource grid
@@ -27,7 +28,7 @@ R = 20
 
 # Anomaly parameters
 max_age = 100       # Max age to save
-SIGMA = 0.2         # PPS collision threshole
+SIGMA = 0.2         # PPS collision threshold
 
 ### DRIFT PARAMETERS ###
 p11 = 0.9
@@ -42,6 +43,22 @@ p01_25 = np.array([0.00385, 0.031, 0.032, 0.033])
 # Algorithm parameters
 dt_realign_thr = 0.95
 ETA = 0.005
+
+### KALMAN DRIFT PARAMETERS ###
+cent = 1
+side = - 1 / 9
+
+F = np.zeros((C, C))
+for i in range(C):
+    F[i, i] = cent
+    F[i, i - 1] = side
+    F[i, np.mod(i + 1, C)] = side
+
+# F = np.asarray([[0.8, 0.1, 0, -0.2], [0.2, 0.8, -0.1, 0], [0, 0.2, 8/9, -0.1], [0, 0.2, 0.3, 8/9]])
+
+sigma_w = 0.25
+sigma_v = 0.2
+H = np.eye(C)
 
 # Schedulers
 # Schemes
