@@ -139,7 +139,8 @@ def run_episode(episode_idx: int,
         # Local and distributed anomaly belief update
         push_scheduler.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
-        drift_mse[k, :] = pull_scheduler.update_posterior_pmf(successful, drift_state[successful])
+        observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
+        drift_mse[k, :] = pull_scheduler.update_posterior_pmf(successful, observations[successful])
 
         ### LOGGING ###
         if debug_mode:
