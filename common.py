@@ -19,7 +19,7 @@ N = 100             # Num nodes N_a
 C = 4               # cluster size
 D = 20              # Num clusters
 T = int(1e3)        # Num frames
-E = 10              # num episodes
+E = 2              # num episodes
 RNG = np.random.default_rng(0)  # Random Number Generator
 
 # Resource grid
@@ -58,6 +58,8 @@ for i in range(C):
 
 sigma_w = 0.25
 sigma_v = 0.2
+sigma_w_hat = 0.25
+sigma_v_hat = 0.2
 H = np.eye(C)
 
 # Schedulers

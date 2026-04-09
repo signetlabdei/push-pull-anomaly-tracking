@@ -33,7 +33,7 @@ def generate_observations(state, C, H, sigma_v, rng):
     observations = np.zeros(len(state))
     for i in range(int(len(state) / C)):
         cluster_state = np.asarray(state[i * C : (i + 1) * C])
-        observed = np.matmul(H, cluster_state) #+ rng.normal(np.zeros(C), np.ones(C) * sigma_v, C)
+        observed = np.matmul(H, cluster_state) + rng.normal(np.zeros(C), np.ones(C) * sigma_v, C)
         observations[i * C : (i + 1) * C] = observed
     return observations
 

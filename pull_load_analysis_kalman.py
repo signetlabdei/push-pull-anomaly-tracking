@@ -16,6 +16,7 @@ def run_episode(episode_idx: int,
                 cluster_size: int, num_cluster: int, pull_res: int,
                 F: np.ndarray, H : np.ndarray,
                 sigma_w: float, sigma_v: float,
+                sigma_w_hat: float, sigma_v_hat: float,
                 debug_mode: bool = False):
     r"""Run a single episode of a push-pull scenario. Parallelization allowed.
 
@@ -30,6 +31,8 @@ def run_episode(episode_idx: int,
     :param H: observation matrix :math:`H`
     :param sigma_w: process noise variance :math:`sigma_w`
     :param sigma_v: observation noise variance :math:`sigma_v`
+    :param sigma_w_hat: estimated process noise variance :math:`sigma_w`
+    :param sigma_v_hat: estimated observation noise variance :math:`sigma_v`
     :param debug_mode: If true, run in debug mode.
     :return: histogram of DT drift AoII.
     """
@@ -39,7 +42,7 @@ def run_episode(episode_idx: int,
     rng = np.random.default_rng(episode_idx)
 
     num_clustered_nodes = num_cluster * cluster_size   # The first clustered nodes have distributed anomalies
-    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F, H, sigma_w, sigma_v, rng = rng, debug_mode = debug_mode)
+    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
 
     # Utility variables
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
@@ -121,7 +124,8 @@ if __name__ == '__main__':
         # Check if data is there
         if overwrite or np.isnan(prob_avg[s]):
             args = (s, cmn.bins, cmn.T, cmn.C, cmn.D, Q,
-                    cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v, debug)
+                    cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v,
+                    cmn.sigma_w_hat, cmn.sigma_v_hat, debug)
 
             start_time = time.time()
             if parallel:
