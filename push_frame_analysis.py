@@ -2,7 +2,7 @@
  # This file is part of the Push-Pull Medium Access repository:
  # https://github.com/signetlabdei/push-pull-anomaly-tracking
  # Copyright (c) 2025:
- # Fabio Saggese (fabio.saggese@ing.unipd.it)
+ # Fabio Saggese (fabio.saggese@ing.unipi.it)
  # Federico Chiariotti (federico.chiariotti@unipd.it)
  #
  # This program is free software: you can redistribute it and/or modify
