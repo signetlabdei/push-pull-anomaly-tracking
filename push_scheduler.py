@@ -2,7 +2,7 @@
  # This file is part of the Push-Pull Medium Access repository:
  # https://github.com/signetlabdei/push-pull-anomaly-tracking
  # Copyright (c) 2025:
- # Fabio Saggese (fabio.saggese@ing.unipd.it)
+ # Fabio Saggese (fabio.saggese@ing.unipi.it)
  # Federico Chiariotti (federico.chiariotti@unipd.it)
  #
  # This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ class PushScheduler:
 
         :param N: number of nodes in the system :math:`N`
         :param max_age: maximum considered AoII :math:`M`
-        :param activation: initial probability :math:`\lambda`
+        :param activation: initial probability :math:`lambda`
         :param scheduler_type: 0 for naive belief, 1 for full PPS
         :param debug_mode: boolean flag to enable debug mode`
         """
@@ -257,7 +257,7 @@ class PushAlohaScheduler:
         """
         self.num_nodes = num_nodes
         self.P = P
-        self.rate = 0.9 / (N * anomaly_rate / P)
+        self.rate = 0.9 / (num_nodes * anomaly_rate / P)
 
     def schedule(self):
         """Randomly pick nodes for transmission
