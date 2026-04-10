@@ -1,4 +1,3 @@
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 import numpy as np
@@ -6,8 +5,6 @@ import pandas as pd
 
 from pull_kalman_scheduler import generate_drifts, generate_observations, PullScheduler
 import common as cmn
-from drift_rate_test import compute_absorption_rate
-
 
 
 def run_episode(episode_idx: int,
@@ -85,8 +82,7 @@ def run_episode(episode_idx: int,
         ### COMPUTE TOTAL RISK
         mse[k] = pull_scheduler.get_total_mse
 
-
-    return mse
+    return np.histogram(mse, bins=num_bins, range=(0,100), density = True)
 
 
 if __name__ == '__main__':
@@ -98,64 +94,58 @@ if __name__ == '__main__':
         pull_folder = cmn.pull_folder
     # Simulation variables
     schedulers = cmn.pull_scheduler_names
+    dec = 6
     Q = 10
+    sigma_w_vec = np.arange(0.05, 1.0, 0.05).round(dec)
 
-    # Check if files exist and load it if there
-    prefix = 'pull_load_kalman'
-    filename_avg = os.path.join(pull_folder, prefix + '_avg.csv')
-    filename_99 = os.path.join(pull_folder, prefix + '_99.csv')
-    filename_999 = os.path.join(pull_folder, prefix + '_999.csv')
-    filename_cdf = os.path.join(pull_folder, prefix + '_cdf.csv')
 
-    if os.path.exists(filename_avg) and not overwrite:
-        prob_avg = pd.read_csv(filename_avg).iloc[:, 1:].to_numpy().T
-    else:
-        prob_avg = np.full(len(schedulers), np.nan)
-    if os.path.exists(filename_99) and not overwrite:
-        prob_99 = pd.read_csv(filename_99).iloc[:, 1:].to_numpy().T
-    else:
-        prob_99 = np.full(len(schedulers), np.nan)
-    if os.path.exists(filename_999) and not overwrite:
-        prob_999 = pd.read_csv(filename_999).iloc[:, 1:].to_numpy().T
-    else:
-        prob_999 = np.full(len(schedulers), np.nan)
+    # Check if results data exist and load it if there
+    data_shape = (len(schedulers), len(sigma_w_vec))
+    prefix = 'pull_process_kalman'
+    prob_avg, filename_avg = cmn.check_data(data_shape, prefix + '_avg', pull_folder, overwrite_flag=overwrite)
+    prob_99, filename_99 = cmn.check_data(data_shape, prefix + '_99', pull_folder, overwrite_flag=overwrite)
+    prob_999, filename_999 = cmn.check_data(data_shape, prefix + '_999', pull_folder, overwrite_flag=overwrite)
 
     for s, _ in enumerate(schedulers):
-        # Check if data is there
-        if overwrite or np.isnan(prob_avg[s]):
-            args = (s, cmn.bins, cmn.T, cmn.C, cmn.D, Q,
-                    cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v,
-                    cmn.sigma_w_hat, cmn.sigma_v_hat, debug)
+        for m, sigma_w in enumerate(sigma_w_vec):
+            print(f"Test: sched={schedulers[s]}, sigma_w={sigma_w:.2f}. Status:")
 
-            start_time = time.time()
-            if parallel:
-                with ProcessPoolExecutor() as executor:
-                    futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
-                    results = [f.result() for f in futures]
+            # Check if data is there
+            if overwrite or np.isnan(prob_avg[s, m]):
+                args = (s, cmn.bins, cmn.T, cmn.C, cmn.D, Q,
+                        cmn.F, cmn.H, sigma_w, cmn.sigma_v,
+                        sigma_w, cmn.sigma_v_hat, debug)
+
+                start_time = time.time()
+                if parallel:
+                    with ProcessPoolExecutor() as executor:
+                        futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
+                        results = [f.result() for f in futures]
+                else:
+                    results = []
+                    for ep in range(cmn.E):
+                        print(f'\tEpisode: {ep:02d}/{cmn.E - 1:02d}')
+                        results.append(run_episode(ep, *args))
+
+                # Average the results
+                mse_hist = np.mean(np.array([res[0] for res in results]), axis=0)
+                mse_values = (results[0][1][:-1] + results[0][1][1:]) / 2    # Taking the center of each bin
+                # Divide data
+                mse_cdf = np.cumsum(mse_hist) / cmn.bins * 100
+                prob_avg[s, m] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
+                prob_99[s, m] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
+                prob_999[s, m] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
+
+                # Generate data frame and save it (redundant but to avoid to lose data for any reason)
+                for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
+                    df = pd.DataFrame(res.T.round(dec), columns=schedulers)
+                    df.insert(0, 'sigma_w', sigma_w_vec)
+                    df.to_csv(file, index=False)
+
+                # Print time
+                elapsed = time.time() - start_time
+                print(f"\t...done in {elapsed:.3f} seconds")
+
             else:
-                results = []
-                for ep in range(cmn.E):
-                    print(f'\tEpisode: {ep:02d}/{cmn.E - 1:02d}')
-                    results.append(run_episode(ep, *args))
-
-            # Average the results
-            mse_hist = np.histogram(np.asarray(results).flatten(), bins = cmn.bins, range=(0,100), density = True)
-            # Divide data
-            mse_cdf = np.cumsum(mse_hist[0]) / cmn.bins * 100
-            prob_99[s] = mse_hist[1][np.where(mse_cdf > 0.99)[0][0]]
-            prob_999[s] = mse_hist[1][np.where(mse_cdf > 0.999)[0][0]]
-            prob_avg[s] = np.mean(np.asarray(results).flatten())
-
-            # Generate data frame and save it (redundant but to avoid to lose data for any reason)
-            for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
-                df = pd.DataFrame([res], columns=schedulers)
-                print(df)
-                df.to_csv(file, index=False)
-
-            # Print time
-            elapsed = time.time() - start_time
-            print(f"\t...done in {elapsed:.3f} seconds")
-
-        else:
-            print("\t...already done!")
-            continue
+                print("\t...already done!")
+                continue
