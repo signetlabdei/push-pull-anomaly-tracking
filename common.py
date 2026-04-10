@@ -2,6 +2,7 @@ import os
 from argparse import ArgumentParser
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 import sys
 
@@ -19,8 +20,7 @@ N = 100             # Num nodes N_a
 C = 4               # cluster size
 D = 20              # Num clusters
 T = int(1e3)        # Num frames
-E = 2              # num episodes
-RNG = np.random.default_rng(0)  # Random Number Generator
+E = 100              # num episodes
 
 # Resource grid
 frame_duration = 10e-3      # 10 ms
@@ -81,3 +81,11 @@ def common_parser():
     args = parser.parse_args()
     return args.parallel, args.savedir, args.debug, args.overwrite
 
+def check_data(data_shape: tuple, prefix: str, folder: str, overwrite_flag: bool = False):
+    filename = os.path.join(folder, prefix + '.csv')
+
+    if os.path.exists(filename) and not overwrite_flag:
+        results = pd.read_csv(filename).iloc[:, 1:].to_numpy()
+    else:
+        results = np.full(data_shape, np.nan)
+    return results, filename
