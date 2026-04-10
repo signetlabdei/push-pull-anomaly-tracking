@@ -19,7 +19,6 @@
  #
 
 import numpy as np
-import itertools
 
 def generate_drifts(state, C, F, sigma_w, rng):
     new_states = np.zeros(len(state))
