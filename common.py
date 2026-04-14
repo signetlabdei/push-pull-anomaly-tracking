@@ -89,3 +89,9 @@ def check_data(data_shape: tuple, prefix: str, folder: str, overwrite_flag: bool
     else:
         results = np.full(data_shape, np.nan)
     return results, filename
+
+def latex_look(plt):
+    # Set LaTeX as the default text interpreter
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Computer Modern Roman']  # LaTeX default font
