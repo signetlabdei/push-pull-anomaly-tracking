@@ -80,7 +80,7 @@ def run_episode(episode_idx: int,
             input("Press Enter to continue...")
 
         ### COMPUTE TOTAL RISK
-        mse[k] = pull_scheduler.get_total_mse
+        mse[k] = pull_scheduler.get_cluster_mse
 
     return np.histogram(mse, bins=num_bins, range=(0,100), density = True)
 
