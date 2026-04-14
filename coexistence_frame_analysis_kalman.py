@@ -103,7 +103,8 @@ def run_episode(episode_idx: int,
 
         ### SUBFRAME ALLOCATION ###
         anomaly_risk = push_scheduler.get_risk(aoii_thr)
-        drift_risk = np.sum(pull_scheduler.get_total_mse > mse_thr) / num_cluster
+        # drift_risk = np.sum(pull_scheduler.get_total_mse > mse_thr) / num_cluster
+        drift_risk = np.min([1, np.mean(pull_scheduler.get_total_mse) / mse_thr])
         P, Q = manager.allocate_resources(anomaly_risk, drift_risk)  # Allocate resources
         if debug_mode:
             print('anomaly_risk', anomaly_risk, 'drift_risk', drift_risk, 'ratio', anomaly_risk / drift_risk)

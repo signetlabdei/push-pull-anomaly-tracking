@@ -9,7 +9,7 @@ import common as cmn
 
 def run_episode(episode_idx: int,
                 pull_type: int,
-                num_bins: int, max_num_frame: int,
+                num_bins: int, maxval: int, max_num_frame: int,
                 cluster_size: int, num_cluster: int, pull_res: int,
                 F: np.ndarray, H : np.ndarray,
                 sigma_w: float, sigma_v: float,
@@ -20,6 +20,7 @@ def run_episode(episode_idx: int,
     :param episode_idx: The index of the episode to run.
     :param pull_type: The type of scheduler to run 0: PPS, 1: CRA, 2: MAF
     :param num_bins: The number of bins to use for the output histogram.
+    :param maxval: The maximum value to use for the output histogram.
     :param max_num_frame: The maximum number of frames to simulate.
     :param cluster_size: The size of the clusters :math:`C`.
     :param num_cluster: The number of clusters :math:`D`.
@@ -69,6 +70,15 @@ def run_episode(episode_idx: int,
         cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful,
                                                              observations[successful])
 
+        # Add an offset to the state equal to the state estimate to avoid state divergence
+        drift_state -= pull_scheduler.reset_state_estimate()
+
+
+
+        if (np.max(drift_state) > 1e8):
+            print('Error: Kalman state diverged')
+            input("Press Enter to continue...")
+
         ### DEBUG for visualization ###
         if debug_mode:
             risk = pull_scheduler.get_cluster_mse
@@ -80,9 +90,9 @@ def run_episode(episode_idx: int,
             input("Press Enter to continue...")
 
         ### COMPUTE TOTAL RISK
-        mse[k] = pull_scheduler.get_cluster_mse
-
-    return np.histogram(mse, bins=num_bins, range=(0,100), density = True)
+        mse[k, :] = pull_scheduler.get_actual_mse(drift_state)
+        # mse[k, :] = pull_scheduler.get_cluster_mse
+    return np.histogram(mse, bins=num_bins, range=(0,maxval), density = True)
 
 
 if __name__ == '__main__':
@@ -96,7 +106,7 @@ if __name__ == '__main__':
     schedulers = cmn.pull_scheduler_names
     dec = 6
     Q = 10
-    sigma_w_vec = np.arange(0.05, 1.0, 0.05).round(dec)
+    sigma_w_vec = np.arange(0, 0.51, 0.05).round(dec)
 
 
     # Check if results data exist and load it if there
@@ -112,8 +122,8 @@ if __name__ == '__main__':
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[s, m]):
-                args = (s, cmn.bins, cmn.T, cmn.C, cmn.D, Q,
-                        cmn.F, cmn.H, sigma_w, cmn.sigma_v,
+                args = (s, cmn.bins, cmn.maxval, cmn.T, cmn.C, cmn.D,
+                        Q, cmn.F, cmn.H, sigma_w, cmn.sigma_v,
                         sigma_w, cmn.sigma_v_hat, debug)
 
                 start_time = time.time()
@@ -131,10 +141,11 @@ if __name__ == '__main__':
                 mse_hist = np.mean(np.array([res[0] for res in results]), axis=0)
                 mse_values = (results[0][1][:-1] + results[0][1][1:]) / 2    # Taking the center of each bin
                 # Divide data
-                mse_cdf = np.cumsum(mse_hist) / cmn.bins * 100
+                mse_cdf = np.cumsum(mse_hist) / cmn.bins * cmn.maxval
                 prob_avg[s, m] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
                 prob_99[s, m] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
                 prob_999[s, m] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
+                print(prob_avg, prob_99, prob_999)
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:

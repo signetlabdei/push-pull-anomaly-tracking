@@ -213,6 +213,18 @@ class PullScheduler:
             mse[n] = np.trace(self.pred_covariances[cluster])
         return mse
 
+    def reset_state_estimate(self) -> np.ndarray:
+        """Return a vector with the state estimate across all the clusters
+        and reset state estimate to 0 for numerical convergence
+
+        :return: np.ndarray CD times 1, state estimate
+        """
+        state_vector = np.zeros(self.cluster_size * self.num_clusters)
+        for i in range(self.num_clusters):
+            state_vector[i * self.cluster_size : (i + 1) * self.cluster_size] = self.states[i].flatten()
+            self.states[i] = np.zeros((self.cluster_size, 1))
+        return state_vector
+
     @property
     def get_total_mse(self) -> float:
         """Compute the total MSE across all the clusters
@@ -230,6 +242,21 @@ class PullScheduler:
         mse = np.zeros(self.num_clusters)
         for i in range(self.num_clusters):
             mse[i] = np.trace(self.pred_covariances[i])
+        return mse
+
+    def get_actual_mse(self, actual_state) -> np.ndarray:
+        """Compute the MSE for all clusters
+
+        :param actual_state: np.ndarray CD times 1, real state of the system
+        :return: np.ndarray D times 1, cluster MSE per cluster
+        """
+        mse = np.zeros(self.num_clusters)
+        for i in range(self.num_clusters):
+            cluster_state = np.asarray(actual_state[i * self.cluster_size : (i + 1) * self.cluster_size])
+            error = cluster_state
+            # print('a', cluster_state, np.transpose(self.states[i]))
+            # print('b', error, np.sum(np.power(error, 2)))
+            mse[i] = np.sum(np.power(error, 2))
         return mse
 
 
