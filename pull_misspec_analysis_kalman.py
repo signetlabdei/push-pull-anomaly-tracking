@@ -18,7 +18,7 @@ if __name__ == '__main__':
     schedulers = cmn.pull_scheduler_names
     dec = 6
     Q = 10
-    delta_F_vec = np.arange(-0.1, 0.11, 0.1).round(dec)
+    delta_F_vec = np.arange(-0.11, 0.115, 0.005).round(dec)
     sigma_w = 0.5
 
 
