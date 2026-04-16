@@ -32,7 +32,7 @@ if __name__ == '__main__':
             print(f"Test: sched={schedulers[s]}, Q={Q:02d}. Status:")
             # Check if data is there
             if overwrite or np.isnan(prob_avg[s, q]):
-                args = (s, cmn.bins, cmn.T, cmn.C, cmn.D, Q,
+                args = (s, cmn.bins, cmn.maxval, cmn.T, cmn.C, cmn.D, Q,
                         cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v,
                         cmn.sigma_w, cmn.sigma_v_hat, debug)
 
@@ -55,6 +55,8 @@ if __name__ == '__main__':
                 prob_avg[s, q] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
                 prob_99[s, q] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
                 prob_999[s, q] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
+                if debug:
+                    print(prob_avg, prob_99, prob_999)
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
