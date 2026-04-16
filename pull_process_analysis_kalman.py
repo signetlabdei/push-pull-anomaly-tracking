@@ -75,7 +75,7 @@ def run_episode(episode_idx: int,
 
 
 
-        if (np.max(drift_state) > 1e8):
+        if np.max(drift_state) > 1e8:
             print('Error: Kalman state diverged')
             input("Press Enter to continue...")
 
@@ -106,15 +106,15 @@ if __name__ == '__main__':
     schedulers = cmn.pull_scheduler_names
     dec = 6
     Q = 10
-    sigma_w_vec = np.arange(0, 0.51, 0.05).round(dec)
+    sigma_w_vec = np.arange(0, 1.05, 0.05).round(dec)
 
 
     # Check if results data exist and load it if there
-    data_shape = (len(schedulers), len(sigma_w_vec))
+    data_results = (schedulers, sigma_w_vec)
     prefix = 'pull_process_kalman'
-    prob_avg, filename_avg = cmn.check_data(data_shape, prefix + '_avg', pull_folder, overwrite_flag=overwrite)
-    prob_99, filename_99 = cmn.check_data(data_shape, prefix + '_99', pull_folder, overwrite_flag=overwrite)
-    prob_999, filename_999 = cmn.check_data(data_shape, prefix + '_999', pull_folder, overwrite_flag=overwrite)
+    prob_avg, filename_avg = cmn.check_data(data_results, prefix + '_avg', pull_folder, overwrite_flag=overwrite)
+    prob_99, filename_99 = cmn.check_data(data_results, prefix + '_99', pull_folder, overwrite_flag=overwrite)
+    prob_999, filename_999 = cmn.check_data(data_results, prefix + '_999', pull_folder, overwrite_flag=overwrite)
 
     for s, _ in enumerate(schedulers):
         for m, sigma_w in enumerate(sigma_w_vec):
@@ -145,7 +145,8 @@ if __name__ == '__main__':
                 prob_avg[s, m] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
                 prob_99[s, m] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
                 prob_999[s, m] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
-                print(prob_avg, prob_99, prob_999)
+                if debug:
+                    print(prob_avg, prob_99, prob_999)
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:
