@@ -82,13 +82,34 @@ def common_parser():
     args = parser.parse_args()
     return args.parallel, args.savedir, args.debug, args.overwrite
 
-def check_data(data_shape: tuple, prefix: str, folder: str, overwrite_flag: bool = False):
+def check_data(data: tuple, prefix: str, folder: str, overwrite_flag: bool = False):
+    """Check if a csv with results exists. If no overwrite flag is given, it tries to add points given by data_shape
+    to the new results"""
+    # Generate filename
     filename = os.path.join(folder, prefix + '.csv')
+    # Take size of the data
+    cols = data[0]
+    rows = data[1]
+    data_shape = (len(cols), len(rows))
+    # Generate empty result matrix
+    results = np.full(data_shape, np.nan)
 
+    # Check existence
     if os.path.exists(filename) and not overwrite_flag:
-        results = pd.read_csv(filename).iloc[:, 1:].to_numpy()
-    else:
-        results = np.full(data_shape, np.nan)
+        df = pd.read_csv(filename)
+        existing_x = df.iloc[:, 0].values  # Existing x values (first column)
+        existing_y = df.iloc[:, 1:].values  # Existing y values (other columns)
+
+        # Find the indices in `rows` where the x values exist in `existing_x`
+        mask = np.isin(rows, existing_x)
+
+        # For the matching rows, find their positions in existing_x
+        # Use np.searchsorted or a dictionary for mapping
+        x_to_idx = {x: i for i, x in enumerate(existing_x)}
+        row_indices = np.array([x_to_idx[x] for x in rows[mask]])
+
+        # Assign the values from existing_y to results
+        results[:, mask] = existing_y[row_indices, :].T  # Transpose to align dimensions
     return results, filename
 
 def latex_look(plt):
