@@ -7,7 +7,7 @@ cmn.latex_look(plt)
 
 # Pull folder
 folder = cmn.pull_folder
-prefixes = ["pull_process_kalman", "pull_frame_kalman", "pull_noise_kalman", "pull_noise_kalman_50"]
+prefixes = ["pull_process_kalman", "pull_frame_kalman", "pull_noise_kalman_25", "pull_noise_kalman_50"]
 suffixes = ["_avg", "_99", "_999"]
 suf_ylabels = ["avg. MSE", "MSE 99-th", "MSE 999-th"]
 num_results = len(suffixes)
