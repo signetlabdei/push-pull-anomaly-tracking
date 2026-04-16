@@ -11,7 +11,7 @@ def run_episode(episode_idx: int,
                 pull_type: int,
                 num_bins: int, maxval: int, max_num_frame: int,
                 cluster_size: int, num_cluster: int, pull_res: int,
-                F: np.ndarray, H : np.ndarray,
+                F: np.ndarray, F_hat: np.ndarray, H : np.ndarray,
                 sigma_w: float, sigma_v: float,
                 sigma_w_hat: float, sigma_v_hat: float,
                 debug_mode: bool = False):
@@ -26,6 +26,7 @@ def run_episode(episode_idx: int,
     :param num_cluster: The number of clusters :math:`D`.
     :param pull_res: The amount of resources available for pull :math:`Q`
     :param F: state update matrix :math:`F`
+    :param F_hat: estimated state update matrix :math:`F`
     :param H: observation matrix :math:`H`
     :param sigma_w: process noise variance :math:`sigma_w`
     :param sigma_v: observation noise variance :math:`sigma_v`
@@ -40,7 +41,7 @@ def run_episode(episode_idx: int,
     rng = np.random.default_rng(episode_idx)
 
     num_clustered_nodes = num_cluster * cluster_size   # The first clustered nodes have distributed anomalies
-    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
+    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F_hat, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
 
     # Utility variables
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
@@ -123,7 +124,7 @@ if __name__ == '__main__':
             # Check if data is there
             if overwrite or np.isnan(prob_avg[s, m]):
                 args = (s, cmn.bins, cmn.maxval, cmn.T, cmn.C, cmn.D,
-                        Q, cmn.F, cmn.H, sigma_w, cmn.sigma_v,
+                        Q, cmn.F, cmn.F, cmn.H, sigma_w, cmn.sigma_v,
                         sigma_w, cmn.sigma_v_hat, debug)
 
                 start_time = time.time()
