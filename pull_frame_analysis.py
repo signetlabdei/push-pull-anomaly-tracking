@@ -39,8 +39,6 @@ if __name__ == '__main__':
     dec = 6
     Q_vec = np.arange(5, 21)
     schedulers = cmn.pull_scheduler_names
-    debug_mode = False
-    overwrite = False
 
 
     for clu in ['het', 'hom']:
