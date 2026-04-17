@@ -20,11 +20,11 @@ if __name__ == '__main__':
     Q_vec = np.arange(5, 21)
 
     # Check if results data exist and load it if there
-    data_shape = (len(schedulers), len(Q_vec))
+    data_results = (schedulers, Q_vec)
     prefix = 'pull_frame_kalman'
-    prob_avg, filename_avg = cmn.check_data(data_shape, prefix + '_avg', pull_folder, overwrite_flag=overwrite)
-    prob_99, filename_99 = cmn.check_data(data_shape, prefix + '_99', pull_folder, overwrite_flag=overwrite)
-    prob_999, filename_999 = cmn.check_data(data_shape, prefix + '_999', pull_folder, overwrite_flag=overwrite)
+    prob_avg, filename_avg = cmn.check_data(data_results, prefix + '_avg', pull_folder, overwrite_flag=overwrite)
+    prob_99, filename_99 = cmn.check_data(data_results, prefix + '_99', pull_folder, overwrite_flag=overwrite)
+    prob_999, filename_999 = cmn.check_data(data_results, prefix + '_999', pull_folder, overwrite_flag=overwrite)
 
     for s, _ in enumerate(schedulers):
         for q, Q in enumerate(Q_vec):
@@ -33,7 +33,7 @@ if __name__ == '__main__':
             # Check if data is there
             if overwrite or np.isnan(prob_avg[s, q]):
                 args = (s, cmn.bins, cmn.maxval, cmn.T, cmn.C, cmn.D, Q,
-                        cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v,
+                        cmn.F, cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v,
                         cmn.sigma_w, cmn.sigma_v_hat, debug)
 
                 start_time = time.time()
