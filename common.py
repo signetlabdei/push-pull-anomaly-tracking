@@ -57,7 +57,7 @@ for i in range(C):
 
 # F = np.asarray([[0.8, 0.1, 0, -0.2], [0.2, 0.8, -0.1, 0], [0, 0.2, 8/9, -0.1], [0, 0.2, 0.3, 8/9]])
 
-sigma_w = 0.25
+sigma_w = 0.5
 sigma_v = 0.2
 sigma_w_hat = 0.25
 sigma_v_hat = 0.2
