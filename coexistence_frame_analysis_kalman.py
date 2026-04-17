@@ -30,16 +30,18 @@ from push_pull_manager import ResourceManager
 import common as cmn
 
 def run_episode(episode_idx: int,
-                num_bins: int, max_num_frame: int, resources: int,
+                aoii_bins: int, drift_bins: int, maxval: int, max_num_frame: int, resources: int,
                 num_nodes: int, max_age: int, anomaly_rate: float, collision_thr: float, aoii_thr: int,
-                mse_thr: float, cluster_size: int, num_cluster: int, F: np.ndarray, H : np.ndarray,
-                sigma_w: float, sigma_v: float, sigma_w_hat: float, sigma_v_hat: float,
+                mse_thr: float, cluster_size: int, num_cluster: int, F: np.ndarray, F_hat: np.ndarray,
+                H : np.ndarray, sigma_w: float, sigma_v: float, sigma_w_hat: float, sigma_v_hat: float,
                 manager_type: int, push_resources: int = 2, hysteresis: float = 0.005,
                 debug_mode: bool = False):
     r"""Run a single episode of a push-pull scenario. Parallelization allowed.
 
     :param episode_idx: The index of the episode to run.
-    :param num_bins: The number of bins to use for the output histogram.
+    :param aoii_bins: The number of bins to use for the AoII output histogram.
+    :param drift_bins: The number of bins to use for the MSE output histogram.
+    :param maxval: The maximum value to use for the output histogram.
     :param max_num_frame: The maximum number of frames to simulate.
     :param resources: The amount of resources available :math:`R`.
     :param num_nodes: The number of nodes :math:`N`.
@@ -51,6 +53,7 @@ def run_episode(episode_idx: int,
     :param cluster_size: The size of the clusters :math:`C`.
     :param num_cluster: The number of clusters :math:`D`.
     :param F: state update matrix :math:`F`
+    :param F_hat: estimated state update matrix :math:`F`
     :param H: observation matrix :math:`H`
     :param sigma_w: process noise variance :math:`sigma_w`
     :param sigma_v: observation noise variance :math:`sigma_v`
@@ -70,7 +73,7 @@ def run_episode(episode_idx: int,
 
     # Instantiate schedulers
     push_scheduler = PushScheduler(num_nodes, max_age, anomaly_rate, 1, debug_mode)
-    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
+    pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F_hat, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
     manager = ResourceManager(manager_type, resources)
     if manager_type == 0:   # Set P beforehand
         manager.set_push_resources(push_resources)
@@ -141,7 +144,12 @@ def run_episode(episode_idx: int,
         push_scheduler.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
         observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
-        drift_mse[k, :] = pull_scheduler.update_posterior_pmf(successful, observations[successful])
+        pull_scheduler.update_posterior_pmf(successful, observations[successful])
+
+        # Add an offset to the state equal to the state estimate to avoid state divergence
+        drift_state -= pull_scheduler.reset_state_estimate()
+
+        drift_mse[k, :] = pull_scheduler.get_actual_mse(drift_state)
 
         ### LOGGING ###
         if debug_mode:
@@ -160,8 +168,8 @@ def run_episode(episode_idx: int,
 
     anomaly_aoii_tot = np.reshape(anomaly_aoii, max_num_frame * num_nodes)
     drift_mse_tot = np.reshape(drift_mse, max_num_frame * num_cluster)
-    return (np.histogram(anomaly_aoii_tot, bins=num_bins + 1, range=(-0.5, num_bins + 0.5), density=True),
-            drift_mse_tot)
+    return (np.histogram(anomaly_aoii_tot, bins=aoii_bins+1, range=(-0.5, aoii_bins + 0.5), density=True),
+            np.histogram(drift_mse_tot, bins=drift_bins, range=(0,maxval), density=True))
 
 if __name__ == '__main__':
     # Parse arguments, if any
@@ -201,9 +209,10 @@ if __name__ == '__main__':
 
         # Check if data is there
         if overwrite or np.all(np.isnan(aoii[p])):
-            args = (cmn.M, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr, mse_thr,
-                    cmn.C, cmn.D, cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v, cmn.sigma_w_hat, cmn.sigma_v_hat,
-                    manager, P, cmn.ETA, debug)
+
+            args = (cmn.M, cmn.bins, cmn.maxval, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr, mse_thr,
+                    cmn.C, cmn.D, cmn.F, cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v, cmn.sigma_w_hat,
+                    cmn.sigma_v_hat, manager, P, cmn.ETA, debug)
 
             start_time = time.time()
             if parallel:
@@ -218,7 +227,7 @@ if __name__ == '__main__':
 
             # Separate and average the results
             anom_aoii_hist = np.mean(np.array([res[0][0] for res in results]), axis=0)
-            mse_hist = np.histogram(np.asarray(res[1]).flatten(), bins = cmn.bins, range=(0,100), density = True)
+            mse_hist = np.mean(np.array([res[1][0] for res in results]), axis=0)
 
             # Anomalies
             anom_aoii_cdf = np.cumsum(anom_aoii_hist)
@@ -227,8 +236,8 @@ if __name__ == '__main__':
             aoii[p, 2] = np.where(anom_aoii_cdf > 0.999)[0][0]
 
             # DT drifts
-            mse_cdf = np.cumsum(mse_hist[0]) / cmn.bins * 100
-            aoii[p, 3] = np.mean(np.asarray(res[1]).flatten())
+            mse_cdf = np.cumsum(mse_hist[0]) / cmn.bins * cmn.maxval
+            aoii[p, 3] = np.dot(mse_hist, np.arange(0, cmn.maxval, cmn.maxval / cmn.bins))
             aoii[p, 4] = mse_hist[1][np.where(mse_cdf > 0.99)[0][0]]
             aoii[p, 5] = mse_hist[1][np.where(mse_cdf > 0.999)[0][0]]
 

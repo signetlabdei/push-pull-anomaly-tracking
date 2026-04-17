@@ -21,7 +21,7 @@ N = 100             # Num nodes N_a
 C = 4               # cluster size
 D = 20              # Num clusters
 T = int(1e3)        # Num frames
-E = 100             # num episodes
+E = 2             # num episodes
 
 # Resource grid
 frame_duration = 10e-3      # 10 ms
