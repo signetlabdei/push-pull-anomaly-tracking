@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[p, s]):
-                args = (s, cmn.M, P, cmn.T, cmn.N, cmn.max_age,
+                args = (s, cmn.aoii_hbins, P, cmn.T, cmn.N, cmn.max_age,
                         rate, cmn.SIGMA, pps_scheduler_mode, debug)
 
                 start_time = time.time()
@@ -183,7 +183,7 @@ if __name__ == "__main__":
                 anomaly_aoii_cdf = np.cumsum(anomaly_aoii_hist)
                 prob_99[p, s] = np.where(anomaly_aoii_cdf > 0.99)[0][0]
                 prob_999[p, s] = np.where(anomaly_aoii_cdf > 0.999)[0][0]
-                prob_avg[p, s] = np.dot(anomaly_aoii_hist, np.arange(0, cmn.M + 1, 1))
+                prob_avg[p, s] = np.dot(anomaly_aoii_hist, np.arange(0, cmn.aoii_hbins + 1, 1))
 
                 # Generate data frame and save it (redundant but to avoid to lose data for any reason)
                 for res, file in [(prob_avg, filename_avg), (prob_99, filename_99), (prob_999, filename_999)]:

@@ -29,7 +29,7 @@ if __name__ == "__main__":
     if os.path.exists(filename_cdf) and not overwrite:
         cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy().T
     else:
-        cdf = np.full((len(rates), cmn.M + 1), np.nan)
+        cdf = np.full((len(rates), cmn.aoii_hbins + 1), np.nan)
 
 
     for r, rate in enumerate(rates):
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
         # Check if data is there
         if overwrite or np.any(np.isnan(cdf[r])):
-            args = (3, cmn.M, P, cmn.T, cmn.N, cmn.max_age,
+            args = (3, cmn.aoii_hbins, P, cmn.T, cmn.N, cmn.max_age,
                     rate, cmn.SIGMA, pps_scheduler_mode, debug)
 
             start_time = time.time()
@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
             # Generate data frame and save it (redundant but to avoid to lose data for any reason)
             df = pd.DataFrame(cdf.T.round(dec), columns=['p1', 'p2', 'p3', 'p4', 'p5'])
-            df.insert(0, 'Theta', np.arange(cmn.M + 1))
+            df.insert(0, 'Theta', np.arange(cmn.aoii_hbins + 1))
             df.to_csv(filename_cdf, index=False)
 
             # Print time

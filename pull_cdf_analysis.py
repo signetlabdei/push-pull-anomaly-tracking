@@ -51,7 +51,7 @@ if __name__ == '__main__':
     if os.path.exists(filename_cdf) and not overwrite:
         cdf = pd.read_csv(filename_cdf).iloc[:, 1:].to_numpy().T
     else:
-        cdf = np.full((len(multipliers), cmn.M + 1), np.nan)
+        cdf = np.full((len(multipliers), cmn.aoii_hbins + 1), np.nan)
 
     for m, mult in enumerate(multipliers):
         p_01 = cmn.het_p01 * mult
@@ -60,7 +60,7 @@ if __name__ == '__main__':
 
         # Check if data is there
         if overwrite or np.any(np.isnan(cdf[m])):
-            args = (0, cmn.M, cmn.T, cmn.C, cmn.D, Q,
+            args = (0, cmn.aoii_hbins, cmn.T, cmn.C, cmn.D, Q,
                     p_01, cmn.p11, cmn.dt_realign_thr, debug)
 
             start_time = time.time()
@@ -83,7 +83,7 @@ if __name__ == '__main__':
             # Save data
             cdf[m] = drift_aoii_cdf
             cdf_df = pd.DataFrame(cdf.T, columns=absorption_rates.round(dec))
-            cdf_df.insert(0, 'Psi', np.arange(cmn.M + 1))
+            cdf_df.insert(0, 'Psi', np.arange(cmn.aoii_hbins + 1))
             cdf_df.to_csv(filename_cdf, index=False)
 
             # Print time

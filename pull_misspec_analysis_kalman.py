@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
             # Check if data is there
             if overwrite or np.isnan(prob_avg[s, m]):
-                args = (s, cmn.bins, cmn.maxval, cmn.T, cmn.C, cmn.D,
+                args = (s, cmn.mse_hbins, cmn.mse_maxval, cmn.T, cmn.C, cmn.D,
                         Q, cmn.F, F_hat, cmn.H, cmn.sigma_w, cmn.sigma_v,
                         cmn.sigma_w, cmn.sigma_v_hat, debug)
 
@@ -59,7 +59,7 @@ if __name__ == '__main__':
                 mse_hist = np.mean(np.array([res[0] for res in results]), axis=0)
                 mse_values = (results[0][1][:-1] + results[0][1][1:]) / 2    # Taking the center of each bin
                 # Divide data
-                mse_cdf = np.cumsum(mse_hist) / cmn.bins * cmn.maxval
+                mse_cdf = np.cumsum(mse_hist) / cmn.mse_hbins * cmn.mse_maxval
                 prob_avg[s, m] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
                 prob_99[s, m] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
                 prob_999[s, m] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
