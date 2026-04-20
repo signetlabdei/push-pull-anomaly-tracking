@@ -14,14 +14,14 @@ push_folder = os.path.join(data_folder, 'push_only')
 coexistence_folder = os.path.join(data_folder, 'coexistence')
 
 # Main system parameters
-M = 100             # Num bins histogram
-bins = 100000       # Histogram bins (Kalman)
-maxval = 100        # Histogram max value (Kalman)
+aoii_hbins = 100             # Num bins histogram
+mse_hbins = 100000       # Histogram bins (Kalman)
+mse_maxval = 100        # Histogram max value (Kalman)
 N = 100             # Num nodes N_a
 C = 4               # cluster size
 D = 20              # Num clusters
 T = int(1e3)        # Num frames
-E = 2             # num episodes
+E = 100             # num episodes
 
 # Resource grid
 frame_duration = 10e-3      # 10 ms
