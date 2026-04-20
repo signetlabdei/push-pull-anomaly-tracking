@@ -17,7 +17,6 @@
  # along with this program. If not, see <http://www.gnu.org/licenses/>.
  #
 
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 import numpy as np
@@ -29,7 +28,7 @@ from push_pull_manager import ResourceManager
 import common as cmn
 
 def run_episode(episode_idx: int,
-                aoii_bins: int, drift_bins: int, maxval: int, max_num_frame: int, resources: int,
+                aoii_bins: int, drift_bins: int, mse_max: int, max_num_frame: int, resources: int,
                 num_nodes: int, max_age: int, anomaly_rate: float, collision_thr: float, aoii_thr: int,
                 mse_thr: float, cluster_size: int, num_cluster: int, F: np.ndarray, F_hat: np.ndarray,
                 H : np.ndarray, sigma_w: float, sigma_v: float, sigma_w_hat: float, sigma_v_hat: float,
@@ -40,7 +39,7 @@ def run_episode(episode_idx: int,
     :param episode_idx: The index of the episode to run.
     :param aoii_bins: The number of bins to use for the AoII output histogram.
     :param drift_bins: The number of bins to use for the MSE output histogram.
-    :param maxval: The maximum value to use for the output histogram.
+    :param mse_max: The maximum MSE value to use for the output histogram.
     :param max_num_frame: The maximum number of frames to simulate.
     :param resources: The amount of resources available :math:`R`.
     :param num_nodes: The number of nodes :math:`N`.
@@ -84,7 +83,6 @@ def run_episode(episode_idx: int,
     # Utility variables
     anomaly_state = np.zeros(num_nodes)
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
-    mse = np.zeros((max_num_frame, num_cluster))
     anomaly_aoii = np.zeros((max_num_frame, num_nodes))
     drift_mse = np.zeros((max_num_frame, num_cluster))
 
@@ -105,8 +103,7 @@ def run_episode(episode_idx: int,
 
         ### SUBFRAME ALLOCATION ###
         anomaly_risk = push_scheduler.get_risk(aoii_thr)
-        # drift_risk = np.sum(pull_scheduler.get_total_mse > mse_thr) / num_cluster
-        drift_risk = np.min([1, np.mean(pull_scheduler.get_total_mse) / mse_thr])
+        drift_risk = np.min([1, np.mean(pull_scheduler.get_cluster_mse) / mse_thr])
         P, Q = manager.allocate_resources(anomaly_risk, drift_risk)  # Allocate resources
         if debug_mode:
             print('anomaly_risk', anomaly_risk, 'drift_risk', drift_risk, 'ratio', anomaly_risk / drift_risk)
@@ -168,7 +165,7 @@ def run_episode(episode_idx: int,
     anomaly_aoii_tot = np.reshape(anomaly_aoii, max_num_frame * num_nodes)
     drift_mse_tot = np.reshape(drift_mse, max_num_frame * num_cluster)
     return (np.histogram(anomaly_aoii_tot, bins=aoii_bins+1, range=(-0.5, aoii_bins + 0.5), density=True),
-            np.histogram(drift_mse_tot, bins=drift_bins, range=(0,maxval), density=True))
+            np.histogram(drift_mse_tot, bins=drift_bins, range=(0, mse_max), density=True))
 
 if __name__ == '__main__':
     # Parse arguments, if any
@@ -181,25 +178,20 @@ if __name__ == '__main__':
     # Simulation variables
     dec = 6
     P_vec = np.arange(2, 19)
-    aoii_thr = 2
-    mse_thr = 50
+    aoii_thr = 2    # Unused when testing coexistence as a search grid
+    mse_thr = 10    # Unused when testing coexistence as a search grid
+    anomaly_rate = 0.03
     manager = 0
 
     # Order of saving data
-    column_titles = ['ThetaAvg', 'Theta99', 'Theta999', 'PsiAvg', 'Psi99', 'Psi999']
+    metrics = ['aoii_avg', 'aoii_99', 'aoii_999', 'mse_avg', 'mse_99', 'mse_999']
 
     # Start cases
     # Check if files exist and load it if there
-    prefix = 'coexistence_frame_kalman'
-    filename = os.path.join(coexistence_folder, prefix + '.csv')
+    prefix = f"coexistence_frame_kalman"
+    data = (metrics, P_vec)
+    outcomes, filename = cmn.check_data(data, prefix, coexistence_folder, overwrite_flag=overwrite)
 
-    if os.path.exists(filename):
-        aoii = pd.read_csv(filename).iloc[:, 1:].to_numpy()
-    else:
-        aoii = np.full((len(P_vec), len(column_titles)), np.nan)
-
-    # Get load
-    anomaly_rate = 0.03
 
     # Start iterations
     for p, P in enumerate(P_vec):
@@ -207,9 +199,9 @@ if __name__ == '__main__':
         print(f"P={P:02d}. Status:")
 
         # Check if data is there
-        if overwrite or np.all(np.isnan(aoii[p])):
+        if overwrite or np.all(np.isnan(outcomes[:, p])):
 
-            args = (cmn.M, cmn.bins, cmn.maxval, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr, mse_thr,
+            args = (cmn.aoii_hbins, cmn.mse_hbins, cmn.mse_maxval, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr, mse_thr,
                     cmn.C, cmn.D, cmn.F, cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v, cmn.sigma_w_hat,
                     cmn.sigma_v_hat, manager, P, cmn.ETA, debug)
 
@@ -227,21 +219,22 @@ if __name__ == '__main__':
             # Separate and average the results
             anom_aoii_hist = np.mean(np.array([res[0][0] for res in results]), axis=0)
             mse_hist = np.mean(np.array([res[1][0] for res in results]), axis=0)
+            mse_values = np.arange(0, cmn.mse_maxval, cmn.mse_maxval / cmn.mse_hbins) + cmn.mse_maxval / cmn.mse_hbins / 2
 
             # Anomalies
             anom_aoii_cdf = np.cumsum(anom_aoii_hist)
-            aoii[p, 0] = np.dot(anom_aoii_hist, np.arange(0, cmn.M + 1, 1))
-            aoii[p, 1] = np.where(anom_aoii_cdf > 0.99)[0][0]
-            aoii[p, 2] = np.where(anom_aoii_cdf > 0.999)[0][0]
+            outcomes[0, p] = np.dot(anom_aoii_hist, np.arange(0, cmn.aoii_hbins + 1, 1))
+            outcomes[1, p] = np.where(anom_aoii_cdf > 0.99)[0][0]
+            outcomes[2, p] = np.where(anom_aoii_cdf > 0.999)[0][0]
 
             # DT drifts
-            mse_cdf = np.cumsum(mse_hist[0]) / cmn.bins * cmn.maxval
-            aoii[p, 3] = np.dot(mse_hist, np.arange(0, cmn.maxval, cmn.maxval / cmn.bins))
-            aoii[p, 4] = mse_hist[1][np.where(mse_cdf > 0.99)[0][0]]
-            aoii[p, 5] = mse_hist[1][np.where(mse_cdf > 0.999)[0][0]]
+            mse_cdf = np.cumsum(mse_hist) / cmn.mse_hbins * cmn.mse_maxval
+            outcomes[3, p] = np.dot(mse_values, mse_hist) / np.sum(mse_hist)
+            outcomes[4, p] = mse_values[np.where(mse_cdf > 0.99)[0][0]]
+            outcomes[5, p] = mse_values[np.where(mse_cdf > 0.999)[0][0]]
 
             # Generate data frame and save it (redundant but to avoid to lose data for any reason)
-            df = pd.DataFrame(aoii.round(dec), columns=column_titles)
+            df = pd.DataFrame(outcomes.T.round(dec), columns=metrics)
             df.insert(0, 'P', P_vec)
             df.to_csv(filename, index=False)
 

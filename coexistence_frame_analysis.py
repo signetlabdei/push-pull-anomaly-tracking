@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
             # Check if data is there
             if overwrite or np.all(np.isnan(aoii[p])):
-                args = (cmn.M, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr,
+                args = (cmn.aoii_hbins, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr,
                         cmn.C, cmn.D, p_01, cmn.p11, cmn.dt_realign_thr, manager, P, cmn.ETA, debug)
 
                 start_time = time.time()
@@ -227,13 +227,13 @@ if __name__ == '__main__':
 
                 # Anomalies
                 anom_aoii_cdf = np.cumsum(anom_aoii_hist)
-                aoii[p, 0] = np.dot(anom_aoii_hist, np.arange(0, cmn.M + 1, 1))
+                aoii[p, 0] = np.dot(anom_aoii_hist, np.arange(0, cmn.aoii_hbins + 1, 1))
                 aoii[p, 1] = np.where(anom_aoii_cdf > 0.99)[0][0]
                 aoii[p, 2] = np.where(anom_aoii_cdf > 0.999)[0][0]
 
                 # DT drifts
                 drift_aoii_cdf = np.cumsum(drift_aoii_hist)
-                aoii[p, 3] = np.dot(drift_aoii_hist, np.arange(0, cmn.M + 1, 1))
+                aoii[p, 3] = np.dot(drift_aoii_hist, np.arange(0, cmn.aoii_hbins + 1, 1))
                 aoii[p, 4] = np.where(drift_aoii_cdf > 0.99)[0][0]
                 aoii[p, 5] = np.where(drift_aoii_cdf > 0.999)[0][0]
 
