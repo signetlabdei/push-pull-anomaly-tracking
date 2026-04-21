@@ -88,8 +88,8 @@ def check_data(data: tuple, prefix: str, folder: str, overwrite_flag: bool = Fal
     # Generate filename
     filename = os.path.join(folder, prefix + '.csv')
     # Take size of the data
-    cols = data[0]
-    rows = data[1]
+    cols = np.array(data[0], dtype=str)
+    rows = np.array(data[1], dtype=str)
     data_shape = (len(cols), len(rows))
     # Generate empty result matrix
     results = np.full(data_shape, np.nan)
@@ -105,8 +105,11 @@ def check_data(data: tuple, prefix: str, folder: str, overwrite_flag: bool = Fal
 
         # For the matching rows, find their positions in existing_x
         # Use np.searchsorted or a dictionary for mapping
-        x_to_idx = {x: i for i, x in enumerate(existing_x)}
-        row_indices = np.array([x_to_idx[x] for x in rows[mask]])
+        x_to_idx = {str(x): i for i, x in enumerate(existing_x)}
+        # Convert rows[mask] to a list of native Python strings
+        matching_rows = [str(x) for x in rows[mask]]
+        # Get the indices of the matching rows in existing_x
+        row_indices = np.array([x_to_idx[x] for x in matching_rows])
 
         # Assign the values from existing_y to results
         results[:, mask] = existing_y[row_indices, :].T  # Transpose to align dimensions
