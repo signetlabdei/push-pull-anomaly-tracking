@@ -214,7 +214,7 @@ class PushScheduler:
         if self.debug_mode:
             print('u', threshold, self.psi[0,:])
 
-    def __bayes_collisions(self, P, A, c, s, activation, threshold):
+        def __bayes_collisions(P, A, c, s, activation, p_e=0):
         """Use Bayes' theorem to compute the probability of a given number of nodes attempting a transmission for a given outcome
 
         :param P: number of resources (slots) in the push subframe
@@ -222,7 +222,7 @@ class PushScheduler:
         :param c: number of collided slots
         :param s: number of successful slots
         :param activation: average activation probability
-        :param threshold: AoII threshold for transmission
+        :param p_e: erasure probability
 
         :return: the belief distribution (NxM matrix)
         """
@@ -230,10 +230,15 @@ class PushScheduler:
         p_a = np.zeros(A + 1)
         for a in range(A + 1):
             p_a[a] = np.power(activation, a) * np.power(1 - activation, A - a) * math.comb(A, a)
-            if a >= 2 * c + s and p_a[a] > 1e-6:
-               p_cs_a[a] = np.power(1 / P, s) * math.factorial(P) / math.factorial(P - s) * math.comb(a, s)
-               p_cs_a[a] *= np.power(1 / P, 2 * c) * math.factorial(P - s) / math.factorial(P - s - c) * math.factorial(c) * math.comb(a - s, c) * math.comb(a - s - c, c) / np.power(2, c)
-               p_cs_a[a] *= np.power(c / P, a - 2 * c - s) / np.power(3, a - 2 * c - s)
+            for e in range(c + 1):
+                p_e = math.factorial(s + e) / math.factorial(s) / math.factorial(e) * np.power(epsilon, e) * np.power(1 - epsilon, s)
+                coll = c - e
+                single = s + e
+                if a >= 2 * coll + single and p_a[a] > 1e-6:
+                    p_cs_a_e = np.power(1 / P, single) * math.factorial(P) / math.factorial(P - single) * math.comb(a, single)
+                    p_cs_a_e *= np.power(1 / P, 2 * coll) * math.factorial(P - single) / math.factorial(P - single - coll) * math.factorial(coll) * math.comb(a - single, coll) * math.comb(a - single - coll, coll) / np.power(2, coll)
+                    p_cs_a_e *= np.power(coll / P, a - 2 * coll - single) / np.power(3, a - 2 * coll - single)
+                    p_cs_a[a] += p_cs_a_e * p_e
         p_a_cs = np.zeros(A + 1)
         p_cs = 0
         for a in range(A + 1):
