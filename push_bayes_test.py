@@ -53,7 +53,7 @@ def bayes_collisions(P, A, c, s, activation):
         p_a_cs /= np.sum(p_a_cs)
     return p_a_cs
 
-def bayes_collisions_errors(P, A, c, s, activation, p_e):
+def bayes_collisions_errors(P, A, c, s, activation, epsilon):
     """Use Bayes' theorem to compute the probability of a given number of nodes attempting a transmission for a given outcome
 
     :param P: number of resources (slots) in the push subframe
@@ -61,7 +61,7 @@ def bayes_collisions_errors(P, A, c, s, activation, p_e):
     :param c: number of collided slots
     :param s: number of successful slots
     :param activation: average activation probability
-    :param p_e: erasure probability
+    :param epsilon: erasure probability
 
     :return: the belief distribution (NxM matrix)
     """
