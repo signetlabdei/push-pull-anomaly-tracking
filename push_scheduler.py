@@ -101,7 +101,7 @@ class PushScheduler:
         else:
             return int(np.max([0, max_age - 2]))
 
-    def update_psi(self, threshold, outcome):
+    def update_psi(self, threshold, outcome, erasure: float = 0.):
         """Update the posterior belief distribution over AoII
 
         :param threshold: AoII threshold for transmission
@@ -112,7 +112,7 @@ class PushScheduler:
         if self.scheduler_type == 0:
             return self.__pessimistic_update_psi(threshold, outcome)
         if self.scheduler_type == 1:
-            return self.__bayes_update_psi(threshold, outcome)
+            return self.__bayes_update_psi(threshold, outcome, erasure)
 
     def get_risk(self, threshold):
         """Get the risk of the AoII of any node passing a certain threshold
@@ -169,11 +169,12 @@ class PushScheduler:
             self.psi[n, 1:] = self.psi[n, :-1]
             self.psi[n, 0] = 0
 
-    def __bayes_update_psi(self, threshold, outcome):
+    def __bayes_update_psi(self, threshold, outcome, erasure: float = 0.):
         """Perform a Bayesian posterior update over the belief (scheduler mode 1)
 
         :param threshold: AoII threshold for transmission
         :param outcome: outcome of each slot in the push subframe (1+index of the successful node, 0 for silence, -1 for collision)
+        :param erasure: erasure probability (default: 0)
 
         :return: the belief distribution (NxM matrix)
         """
@@ -193,7 +194,7 @@ class PushScheduler:
             c = len(np.where(outcome < -0.1)[0])
             s = len(np.where(outcome > 0.1)[0])
             # print('uc',A,c,s)
-            p_a_cs = self.__bayes_collisions(len(outcome), A, c, s, np.mean(act_prob), threshold)
+            p_a_cs = self.__bayes_collisions(len(outcome), A, c, s, np.mean(act_prob), erasure)
             p_node = 0
             # Total probability that a specific node is a collider
             for a in np.arange(2 * c + s, A + 1, 1):
@@ -214,7 +215,7 @@ class PushScheduler:
         if self.debug_mode:
             print('u', threshold, self.psi[0,:])
 
-        def __bayes_collisions(P, A, c, s, activation, p_e=0):
+    def __bayes_collisions(self, P, A, c, s, activation, erasure_prob: float = 0.):
         """Use Bayes' theorem to compute the probability of a given number of nodes attempting a transmission for a given outcome
 
         :param P: number of resources (slots) in the push subframe
@@ -222,7 +223,7 @@ class PushScheduler:
         :param c: number of collided slots
         :param s: number of successful slots
         :param activation: average activation probability
-        :param p_e: erasure probability
+        :param erasure_prob: erasure probability
 
         :return: the belief distribution (NxM matrix)
         """
@@ -231,7 +232,7 @@ class PushScheduler:
         for a in range(A + 1):
             p_a[a] = np.power(activation, a) * np.power(1 - activation, A - a) * math.comb(A, a)
             for e in range(c + 1):
-                p_e = math.factorial(s + e) / math.factorial(s) / math.factorial(e) * np.power(epsilon, e) * np.power(1 - epsilon, s)
+                p_e = math.factorial(s + e) / math.factorial(s) / math.factorial(e) * np.power(erasure_prob, e) * np.power(1 - erasure_prob, s)
                 coll = c - e
                 single = s + e
                 if a >= 2 * coll + single and p_a[a] > 1e-6:
