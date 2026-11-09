@@ -255,7 +255,7 @@ class PushScheduler:
 class PushAlohaScheduler:
 
     def __init__(self, num_nodes, anomaly_rate, P):
-        """Constructor of the class
+        r"""Constructor of the class
 
         :param num_nodes: number of nodes in the system :math:`N`
         :param P: number of resources in the push subframe
