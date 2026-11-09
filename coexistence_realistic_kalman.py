@@ -27,7 +27,7 @@ from pull_kalman_scheduler import generate_drifts, generate_observations, PullSc
 from push_pull_manager import ResourceManager
 import common as cmn
 
-from phy_mac_isac.anomaly_tracking.scenario import AnomalyTrackingScenario, generate_environment
+from phy_mac_isac.anomaly_tracking.scenario import generate_environment
 
 
 def generate_rectangle_coordinate(size: tuple):
@@ -97,8 +97,8 @@ def run_episode(episode_idx: int,
 
     # Generate scenario with a single central AP in the network where the area_coordinates takes a generic rectangle
     env_kwargs = {"num_ue": num_nodes, "num_slots": resources, "num_frames": max_num_frame,
-                  "num_clusters": num_cluster, "cluster_size": cluster_size}
-    env = generate_environment(episode=episode_idx, env_kwargs=env_kwargs, device="cuda")
+                  "num_clusters": num_cluster, "cluster_size": cluster_size, "bler_target": 0.05}
+    env = generate_environment(episode=episode_idx, env_kwargs=env_kwargs, device="cpu")
 
 
     for k in cmn.std_bar(range(max_num_frame)):
@@ -126,18 +126,20 @@ def run_episode(episode_idx: int,
         ### PULL-BASED SUBFRAME ###
         # Get pull schedule
         scheduled = pull_scheduler.schedule_pps(Q)
-        # Fix local anomalies in scheduled slots
-        anomaly_aoii[k, scheduled] = 0
-        anomaly_state[scheduled] = 0
+
 
         ### PUSH-BASED SUBFRAME ###
         # TODO: separate allocation and outcome and run env.step(allocation)
         # Get local anomaly threshold
         threshold = push_scheduler.schedule(P, collision_thr, scheduled)
+        # Make active the nodes with aoii larger than the threshold and not scheduled during pull
+        bool_idx = (anomaly_aoii[k, :] > threshold) * ~np.array([n in scheduled for n in np.arange(num_nodes)])
         # Select random slots for active nodes
-        choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > threshold)
+        choices = rng.integers(1, P + 1, num_nodes) * bool_idx
+        # Prepare outcome vector
         outcome = np.zeros(P, dtype=int)
         successful_push = []
+        # Keep track of singleton slots
         for p in range(1, P + 1):
             chosen = np.where(choices == p)[0]
             if chosen.size != 0:
@@ -145,15 +147,34 @@ def run_episode(episode_idx: int,
                     if chosen[0] < num_clustered_nodes:
                         successful_push.append(chosen[0])
                     outcome[p - 1] = chosen[0] + 1
-                    anomaly_state[chosen[0]] = 0
-                    anomaly_aoii[k, chosen[0]] = 0
+                    # anomaly_state[chosen[0]] = 0
+                    # anomaly_aoii[k, chosen[0]] = 0
                 else:
                     outcome[p - 1] = -1
 
+        # Take the full scheduling vector to feed env.step with node indexing (<0 are silent or collided slots)
+        full_scheduling = np.hstack([scheduled, outcome - 1])
+        # Run Sionna SYS and output the decoded slots (bool) and successful nodes index
+        decoded, successful, bler = env.step(full_scheduling)
+
         ### POST-FRAME UPDATE ###
+        # Update local anomalies in decoded slots
+        anomaly_aoii[k, successful] = 0
+        anomaly_state[successful] = 0
+
+        # Re-process push outcome to be sure to account for erasure
+        silences = outcome == 0
+        collisions = outcome == -1
+        undecoded = ~decoded[Q:]
+        # The erased ones are the one undecoded but that was not silent nor a collision
+        erased = undecoded * ~silences * ~collisions
+
+        push_outcome_after_decoding = outcome
+        push_outcome_after_decoding[erased] = -1
+
         # Local and distributed anomaly belief update
-        push_scheduler.update_psi(threshold, outcome)
-        successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
+        push_scheduler.update_psi(threshold, push_outcome_after_decoding, erasure=float(np.nanmean(bler)))
+        # successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
         observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
         pull_scheduler.update_posterior_pmf(successful, observations[successful])
 
