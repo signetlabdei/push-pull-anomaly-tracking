@@ -65,6 +65,7 @@ def run_episode(episode_idx: int,
     # Useful variables
     anomaly_state = np.zeros(num_nodes)
     aoii = np.zeros((max_num_frame, num_nodes))
+    aoi = np.zeros(num_nodes)
 
     for k in cmn.std_bar(range(max_num_frame)):
         ### ANOMALY GENERATION ###
@@ -74,12 +75,13 @@ def run_episode(episode_idx: int,
         aoii[k, :] = aoii[k - 1, :] + anomaly_state if k > 0 else anomaly_state
 
         ### UPDATE SCHEDULER PRIORS ###
+        aoi += 1
         if push_type == 3:
             push_scheduler.update_prior()
 
         ### PUSH-BASED SUBFRAME ###
         if push_type == 0:
-            outcome = push_scheduler.schedule(push_res, [])
+            outcome = push_scheduler.schedule(push_res, aoi, [])
             anomaly_state[outcome] = 0
             aoii[k, outcome] = 0
         else:
@@ -101,6 +103,7 @@ def run_episode(episode_idx: int,
                         outcome[p - 1] = chosen[0] + 1
                         anomaly_state[chosen[0]] = 0
                         aoii[k, chosen[0]] = 0
+                        aoi[chosen[0]] = 0
                     else:
                         outcome[p - 1] = -1
 

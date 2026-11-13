@@ -44,6 +44,7 @@ def run_episode(episode_idx: int,
     pull_scheduler = PullScheduler(num_clustered_nodes, cluster_size, F_hat, H, sigma_w_hat, sigma_v_hat, rng = rng, debug_mode = debug_mode)
 
     # Utility variables
+    aoi = np.zeros(num_clustered_nodes)
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
     mse = np.zeros((max_num_frame, num_cluster))
 
@@ -54,6 +55,7 @@ def run_episode(episode_idx: int,
 
         ### UPDATE SCHEDULER PRIORS ###
         pull_scheduler.update_prior()
+        aoi += 1
 
         ### PULL-BASED SUBFRAME ###
         # Get pull scheduler
@@ -62,7 +64,7 @@ def run_episode(episode_idx: int,
         elif pull_type == 1:
             scheduled = pull_scheduler.schedule_cra(pull_res)
         else:   # sched_type == 2
-            scheduled = pull_scheduler.schedule_maf(pull_res, k)
+            scheduled = pull_scheduler.schedule_maf(pull_res, aoi)
 
         ### POST-FRAME UPDATE ###
         # Distributed anomaly belief update
@@ -70,6 +72,8 @@ def run_episode(episode_idx: int,
         observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
         cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful,
                                                              observations[successful])
+        # Update AoI
+        aoi[successful] = 0
 
         # Add an offset to the state equal to the state estimate to avoid state divergence
         drift_state -= pull_scheduler.reset_state_estimate()

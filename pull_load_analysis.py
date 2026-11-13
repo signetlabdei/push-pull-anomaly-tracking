@@ -42,6 +42,7 @@ def run_episode(episode_idx: int,
     # Utility variables
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
     drift_aoii = np.zeros((max_num_frame, num_cluster))
+    aoi = np.zeros(num_clustered_nodes)
 
     # Start frames
     for k in cmn.std_bar(range(max_num_frame)):
@@ -56,6 +57,7 @@ def run_episode(episode_idx: int,
         drift_aoii[k, :] = drift_aoii[k - 1, :] + drift_detected if k > 0 else drift_detected
 
         ### UPDATE SCHEDULER PRIORS ###
+        aoi += 1
         pull_scheduler.update_prior()
 
         ### PULL-BASED SUBFRAME ###
@@ -65,7 +67,7 @@ def run_episode(episode_idx: int,
         elif pull_type == 1:
             scheduled = pull_scheduler.schedule_cra(pull_res)
         else:   # sched_type == 2
-            scheduled = pull_scheduler.schedule_maf(pull_res, k)
+            scheduled = pull_scheduler.schedule_maf(pull_res, aoi)
 
         ### POST-FRAME UPDATE ###
         # Distributed anomaly belief update
@@ -73,6 +75,7 @@ def run_episode(episode_idx: int,
         cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful,
                                                              drift_state[successful],
                                                              realign_thr)
+        aoi[successful] = 0
 
         ### DEBUG for visualization ###
         if debug_mode:
