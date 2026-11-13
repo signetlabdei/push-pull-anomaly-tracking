@@ -19,6 +19,8 @@
 
 import time
 from concurrent.futures import ProcessPoolExecutor
+import multiprocessing as mp
+import os
 import numpy as np
 import pandas as pd
 
@@ -42,7 +44,7 @@ def run_episode(episode_idx: int,
                 num_nodes: int, max_age: int, anomaly_rate: float, collision_thr: float, aoii_thr: int,
                 mse_thr: float, cluster_size: int, num_cluster: int, F: np.ndarray, F_hat: np.ndarray,
                 H : np.ndarray, sigma_w: float, sigma_v: float, sigma_w_hat: float, sigma_v_hat: float,
-                manager_type: int, push_resources: int = 2, hysteresis: float = 0.005,
+                manager_type: int, push_resources: int = 2, hysteresis: float = 0.005, bler_target: float = 0.01,
                 debug_mode: bool = False):
     r"""Run a single episode of a push-pull scenario. Parallelization allowed.
 
@@ -97,7 +99,7 @@ def run_episode(episode_idx: int,
 
     # Generate scenario with a single central AP in the network where the area_coordinates takes a generic rectangle
     env_kwargs = {"num_ue": num_nodes, "num_slots": resources, "num_frames": max_num_frame,
-                  "num_clusters": num_cluster, "cluster_size": cluster_size, "bler_target": 0.05}
+                  "num_clusters": num_cluster, "cluster_size": cluster_size, "bler_target": bler_target}
     env = generate_environment(episode=episode_idx, env_kwargs=env_kwargs, device="cpu")
 
 
@@ -129,7 +131,6 @@ def run_episode(episode_idx: int,
 
 
         ### PUSH-BASED SUBFRAME ###
-        # TODO: separate allocation and outcome and run env.step(allocation)
         # Get local anomaly threshold
         threshold = push_scheduler.schedule(P, collision_thr, scheduled)
         # Make active the nodes with aoii larger than the threshold and not scheduled during pull
@@ -173,10 +174,11 @@ def run_episode(episode_idx: int,
         push_outcome_after_decoding[erased] = -1
 
         # Local and distributed anomaly belief update
-        push_scheduler.update_psi(threshold, push_outcome_after_decoding, erasure=float(np.nanmean(bler)))
+        push_scheduler.update_psi(threshold, push_outcome_after_decoding, erasure=bler_target)
         # successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
         observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
-        pull_scheduler.update_posterior_pmf(successful, observations[successful])
+        successful_clustered = successful[successful < num_clustered_nodes]
+        pull_scheduler.update_posterior_pmf(successful_clustered, observations[successful_clustered])
 
         # Add an offset to the state equal to the state estimate to avoid state divergence
         drift_state -= pull_scheduler.reset_state_estimate()
@@ -191,7 +193,7 @@ def run_episode(episode_idx: int,
             print('out', outcome)
             print('la', anomaly_aoii[k, :])
             print('sch', scheduled)
-            print('o', drift_state[successful])
+            print('o', drift_state[successful_clustered])
             print('y', drift_state)
             print('dr', drift_risk)
             print('da', drift_mse[k, :])
@@ -243,11 +245,11 @@ if __name__ == '__main__':
 
                 args = (cmn.aoii_hbins, cmn.mse_hbins, cmn.mse_maxval, cmn.T, cmn.R, cmn.N, cmn.max_age, anomaly_rate, cmn.SIGMA, aoii_thr, mse_thr,
                         cmn.C, cmn.D, cmn.F, cmn.F, cmn.H, cmn.sigma_w, cmn.sigma_v, cmn.sigma_w_hat,
-                        cmn.sigma_v_hat, manager, min_P, cmn.ETA, debug)
+                        cmn.sigma_v_hat, manager, min_P, cmn.ETA, cmn.BLER_TARGET, debug)
 
                 start_time = time.time()
                 if parallel:
-                    with ProcessPoolExecutor() as executor:
+                    with ProcessPoolExecutor(mp_context=mp.get_context("spawn"), max_workers=os.cpu_count() // 2) as executor:
                         futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
                         results = [f.result() for f in futures]
                 else:
