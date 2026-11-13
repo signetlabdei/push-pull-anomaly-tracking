@@ -12,6 +12,7 @@ data_folder = os.path.join(os.getcwd(), 'data')
 pull_folder = os.path.join(data_folder, 'pull_only')
 push_folder = os.path.join(data_folder, 'push_only')
 coexistence_folder = os.path.join(data_folder, 'coexistence')
+phy_folder = os.path.join(data_folder, 'phy')
 
 # Main system parameters
 aoii_hbins = 100             # Num bins histogram
