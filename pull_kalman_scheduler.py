@@ -175,15 +175,13 @@ class PullScheduler:
                 free_resources = 0
         return scheduled
 
-    def schedule_maf(self, pull_resources: int, present_frame_idx: int) -> np.ndarray:
+    def schedule_maf(self, pull_resources: int, aoi: np.ndarray) -> np.ndarray:
         """Benchmark Maximum Age First Scheduling method
 
         :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
-        :param present_frame_idx: int, index of the present frame"""
-        start = pull_resources * present_frame_idx
-        end = start + pull_resources
-        scheduled = np.arange(start, end) % self.num_nodes
-        return scheduled
+        :param aoi: np.ndarray, AoI of each node
+        """
+        return np.argsort(-aoi)[:pull_resources]
 
     def update_posterior_pmf(self,
                              scheduled: np.ndarray,

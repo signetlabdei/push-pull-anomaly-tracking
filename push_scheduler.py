@@ -297,18 +297,22 @@ class PushMAFScheduler:
         self.num_nodes = num_nodes
         self.n = 0
 
-    def schedule(self, P, pull_sch=[]):
+    def schedule(self, P, aoi: np.ndarray, pull_sch=[]):
         """Select the maximum age nodes for transmission
 
         :param P: number of resources in the push subframe
+        :param aoi: array of age of information for each node
         :param pull_sch: list of nodes scheduled in the pull subframe
 
         :return: the list of scheduled nodes
         """
-        scheduled = np.zeros(P, dtype=int)
-        for p in range(P):
-            while (self.n in pull_sch):
-                self.n = np.mod(self.n + 1, self.num_nodes)
-            scheduled[p] = self.n
-            self.n = np.mod(self.n + 1, self.num_nodes)
-        return scheduled
+        ordered = np.argsort(-aoi)
+        push_sch = [o for o in ordered if o not in pull_sch]
+        return np.array(push_sch[:P])
+
+        # for p in range(P):
+        #     while (self.n in pull_sch):
+        #         self.n = np.mod(self.n + 1, self.num_nodes)
+        #     scheduled[p] = self.n
+        #     self.n = np.mod(self.n + 1, self.num_nodes)
+        # return scheduled
