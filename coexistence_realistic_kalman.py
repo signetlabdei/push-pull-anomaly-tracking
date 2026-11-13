@@ -23,6 +23,7 @@ import multiprocessing as mp
 import os
 import numpy as np
 import pandas as pd
+import torch
 
 from push_scheduler import generate_anomalies, PushScheduler
 from pull_kalman_scheduler import generate_drifts, generate_observations, PullScheduler
@@ -94,13 +95,19 @@ def run_episode(episode_idx: int,
     # Utility variables
     anomaly_state = np.zeros(num_nodes)
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
+    aoi = np.zeros(num_nodes)
     anomaly_aoii = np.zeros((max_num_frame, num_nodes))
     drift_mse = np.zeros((max_num_frame, num_cluster))
 
     # Generate scenario with a single central AP in the network where the area_coordinates takes a generic rectangle
     env_kwargs = {"num_ue": num_nodes, "num_slots": resources, "num_frames": max_num_frame,
                   "num_clusters": num_cluster, "cluster_size": cluster_size, "bler_target": bler_target}
-    env = generate_environment(episode=episode_idx, env_kwargs=env_kwargs, device="cpu")
+    # Check if cuda is available for setting the device
+    if torch.cuda.is_available():
+        device = "cuda:0"
+    else:
+        device = "cpu"
+    env = generate_environment(episode=episode_idx, env_kwargs=env_kwargs, device=device)
 
 
     for k in cmn.std_bar(range(max_num_frame)):
@@ -114,6 +121,7 @@ def run_episode(episode_idx: int,
         anomaly_aoii[k, :] = anomaly_aoii[k - 1, :] + anomaly_state if k > 0 else anomaly_state
 
         ### UPDATE SCHEDULER PRIORS ###
+        aoi += 1
         push_scheduler.update_prior()
         pull_scheduler.update_prior()
 
@@ -148,8 +156,6 @@ def run_episode(episode_idx: int,
                     if chosen[0] < num_clustered_nodes:
                         successful_push.append(chosen[0])
                     outcome[p - 1] = chosen[0] + 1
-                    # anomaly_state[chosen[0]] = 0
-                    # anomaly_aoii[k, chosen[0]] = 0
                 else:
                     outcome[p - 1] = -1
 
@@ -162,6 +168,8 @@ def run_episode(episode_idx: int,
         # Update local anomalies in decoded slots
         anomaly_aoii[k, successful] = 0
         anomaly_state[successful] = 0
+        # Update AoI
+        aoi[successful] = 0
 
         # Re-process push outcome to be sure to account for erasure
         silences = outcome == 0
@@ -211,7 +219,7 @@ if __name__ == '__main__':
     if savedir is not None:
         coexistence_folder = savedir
     else:
-        coexistence_folder = cmn.coexistence_folder
+        coexistence_folder = cmn.phy_folder
 
     # Simulation variables
     dec = 6
