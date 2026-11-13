@@ -2,7 +2,7 @@ contourpy==1.3.2
 cycler==0.12.1
 fonttools==4.58.5
 kiwisolver==1.4.8
-matplotlib==3.10.3
+matplotlib>=3.10.8
 numpy==2.3.1
 packaging==25.0
 pillow==11.3.0
@@ -11,3 +11,4 @@ python-dateutil==2.9.0.post0
 six==1.17.0
 tqdm==4.67.1
 pandas~=2.3.1
+phy-mac-isac @ git+https://github.com/lostinafro/phy-mac-isac.git@v0.0.4
