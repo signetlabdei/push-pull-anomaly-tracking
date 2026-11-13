@@ -27,6 +27,9 @@ E = 100             # num episodes
 frame_duration = 10e-3      # 10 ms
 R = 20
 
+# PHY LAYER PARAMETER
+BLER_TARGET = 0.01
+
 # Anomaly parameters
 max_age = 100       # Max age to save
 SIGMA = 0.2         # PPS collision threshold
