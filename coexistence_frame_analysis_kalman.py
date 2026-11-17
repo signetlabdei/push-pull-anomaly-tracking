@@ -121,6 +121,8 @@ def run_episode(episode_idx: int,
         threshold = push_scheduler.schedule(P, collision_thr, scheduled)
         # Select random slots for active nodes
         choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > threshold)
+        choices[scheduled] = 0
+
         outcome = np.zeros(P, dtype=int)
         successful_push = []
         for p in range(1, P + 1):

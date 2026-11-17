@@ -157,11 +157,11 @@ def run_episode(episode_idx: int,
             outcome = push_scheduler.schedule(P, aoi, scheduled) + 1
         else:
             if push_sched_type == 1:
-                choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (
-                            rng.random(num_nodes) < tx_rate)
+                choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < tx_rate)
+                choices[scheduled] = 0
             elif push_sched_type == 2:
-                choices = np.random.randint(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (
-                            rng.random(num_nodes) < push_scheduler.rate)
+                choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < push_scheduler.rate)
+                choices[scheduled] = 0
             else:
                 threshold = push_scheduler.schedule(P, collision_thr, scheduled)
                 # Make active the nodes with aoii larger than the threshold and not scheduled during pull

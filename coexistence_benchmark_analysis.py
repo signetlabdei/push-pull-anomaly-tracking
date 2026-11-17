@@ -93,6 +93,7 @@ def run_episode(episode_idx: int,
     anomaly_state = np.zeros(num_nodes)
     drift_state = np.zeros(num_clustered_nodes, dtype=int)  # y(k) in the paper
     anomaly_aoii = np.zeros((max_num_frame, num_nodes))
+    aoi = np.zeros(num_nodes)
     drift_aoii = np.zeros((max_num_frame, num_cluster))
 
     for k in cmn.std_bar(range(max_num_frame)):
@@ -111,6 +112,7 @@ def run_episode(episode_idx: int,
         drift_aoii[k, :] = drift_aoii[k - 1, :] + drift_detected if k > 0 else drift_detected
 
         ### UPDATE SCHEDULER PRIORS ###
+        aoi += 1
         if push_sched_type == 3:
             push_scheduler.update_prior()
         pull_scheduler.update_prior()
@@ -133,7 +135,7 @@ def run_episode(episode_idx: int,
         elif pull_sched_type == 1:
             scheduled = pull_scheduler.schedule_cra(Q)
         else:  # dist_sched_type == 2
-            scheduled = pull_scheduler.schedule_maf(Q, k)
+            scheduled = pull_scheduler.schedule_maf(Q, aoi)
 
         # Fix local anomalies in scheduled slots
         anomaly_aoii[k, scheduled] = 0
@@ -141,15 +143,17 @@ def run_episode(episode_idx: int,
 
         ### PUSH-BASED SUBFRAME ###
         if push_sched_type == 0:
-            outcome = push_scheduler.schedule(P, scheduled)
+            outcome = push_scheduler.schedule(P, aoi, scheduled)
             anomaly_state[outcome] = 0
             anomaly_aoii[k, outcome] = 0
             successful_push = outcome[outcome < num_clustered_nodes]
         else:
             if push_sched_type == 1:
                 choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < tx_rate)
+                choices[scheduled] = 0
             elif push_sched_type == 2:
-                choices = np.random.randint(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < push_scheduler.rate)
+                choices = rng.randint(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < push_scheduler.rate)
+                choices[scheduled] = 0
             else:    # push_sched_type == 3:
                 # Get anomaly threshold
                 threshold = push_scheduler.schedule(P, collision_thr, scheduled)
@@ -178,8 +182,10 @@ def run_episode(episode_idx: int,
         elif push_sched_type == 3:
             push_scheduler.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
-        cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful, drift_state[successful],
+        successful_clustered = successful[successful < num_clustered_nodes]
+        cluster_in_anomaly = pull_scheduler.update_posterior_pmf(successful_clustered, drift_state[successful_clustered],
                                                              realign_thr)
+        aoi[successful] = 0
 
         ### LOGGING ###
         if debug_mode:
@@ -234,9 +240,9 @@ if __name__ == '__main__':
     # Start cases
     for schedulers in list(sched_dict.keys()):
         push_type, pull_type = sched_dict[schedulers]
-        for load in ['hom', 'het']:
+        for load in ['hom']:
             # Check if files exist and load it if there
-            prefix = 'coexistence_benchmark_' + schedulers + '_' + load
+            prefix = 'REDO_coexistence_benchmark_' + schedulers + '_' + load
             filename = os.path.join(coexistence_folder, prefix + '.csv')
 
             if os.path.exists(filename) and not overwrite:

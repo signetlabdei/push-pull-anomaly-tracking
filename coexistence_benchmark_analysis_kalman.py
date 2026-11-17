@@ -96,6 +96,7 @@ def run_episode(episode_idx: int,
     anomaly_state = np.zeros(num_nodes)
     drift_state = np.zeros(num_clustered_nodes, dtype=int)    # y(k) in the paper
     anomaly_aoii = np.zeros((max_num_frame, num_nodes))
+    aoi = np.zeros(num_nodes)
     drift_mse = np.zeros((max_num_frame, num_cluster))
 
 
@@ -110,6 +111,7 @@ def run_episode(episode_idx: int,
         anomaly_aoii[k, :] = anomaly_aoii[k - 1, :] + anomaly_state if k > 0 else anomaly_state
 
         ### UPDATE SCHEDULER PRIORS ###
+        aoi += 1
         if push_sched_type == 3:
             push_scheduler.update_prior()
         pull_scheduler.update_prior()
@@ -133,7 +135,7 @@ def run_episode(episode_idx: int,
         elif pull_sched_type == 1:
             scheduled = pull_scheduler.schedule_cra(Q)
         else:  # sched_type == 2
-            scheduled = pull_scheduler.schedule_maf(Q, k)
+            scheduled = pull_scheduler.schedule_maf(Q, aoi)
         # Fix local anomalies in scheduled slots
         anomaly_aoii[k, scheduled] = 0
         anomaly_state[scheduled] = 0
@@ -141,7 +143,7 @@ def run_episode(episode_idx: int,
         ### PUSH-BASED SUBFRAME ###
         # Get local anomaly threshold
         if push_sched_type == 0:
-            outcome = push_scheduler.schedule(P, scheduled)
+            outcome = push_scheduler.schedule(P, aoi, scheduled)
             anomaly_state[outcome] = 0
             anomaly_aoii[k, outcome] = 0
             successful_push = outcome[outcome < num_clustered_nodes]
@@ -179,7 +181,10 @@ def run_episode(episode_idx: int,
             push_scheduler.update_psi(threshold, outcome)
         successful = np.append(scheduled, np.asarray(successful_push, dtype=int))
         observations = generate_observations(drift_state, cluster_size, H, sigma_v, rng)
-        pull_scheduler.update_posterior_pmf(successful, observations[successful])
+        successful_clustered = successful[successful < num_clustered_nodes]
+        pull_scheduler.update_posterior_pmf(successful_clustered, observations[successful_clustered])
+        # Reset AoI of successful
+        aoi[successful] = 0
 
         # Add an offset to the state equal to the state estimate to avoid state divergence
         drift_state -= pull_scheduler.reset_state_estimate()
@@ -237,7 +242,7 @@ if __name__ == '__main__':
         push_type, pull_type = sched_dict[schedulers]
 
         # Check if files exist and load it if there
-        prefix = f"coexistence_benchmark_kalman_" + schedulers
+        prefix = f"REDO_coexistence_benchmark_kalman_" + schedulers
         data = (metrics, P_vec)
         outcomes, filename = cmn.check_data(data, prefix, coexistence_folder, overwrite_flag=overwrite)
 
