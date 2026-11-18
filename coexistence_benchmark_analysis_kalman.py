@@ -242,7 +242,7 @@ if __name__ == '__main__':
         push_type, pull_type = sched_dict[schedulers]
 
         # Check if files exist and load it if there
-        prefix = f"REDO_coexistence_benchmark_kalman_" + schedulers
+        prefix = f"coexistence_benchmark_kalman_" + schedulers
         data = (metrics, P_vec)
         outcomes, filename = cmn.check_data(data, prefix, coexistence_folder, overwrite_flag=overwrite)
 

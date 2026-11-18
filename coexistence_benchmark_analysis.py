@@ -242,7 +242,7 @@ if __name__ == '__main__':
         push_type, pull_type = sched_dict[schedulers]
         for load in ['hom']:
             # Check if files exist and load it if there
-            prefix = 'REDO_coexistence_benchmark_' + schedulers + '_' + load
+            prefix = 'coexistence_benchmark_' + schedulers + '_' + load
             filename = os.path.join(coexistence_folder, prefix + '.csv')
 
             if os.path.exists(filename) and not overwrite:

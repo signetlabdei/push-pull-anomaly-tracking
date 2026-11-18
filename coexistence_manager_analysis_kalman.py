@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
         # Start cases
         # Check if files exist and load it if there
-        prefix = f"REDO_coexistence_manager_kalman_thr{mse_thr:02d}"
+        prefix = f"coexistence_manager_kalman_thr{mse_thr:02d}"
         data = (metrics, manager_names)
         outcomes, filename = cmn.check_data(data, prefix, coexistence_folder, overwrite_flag=overwrite)
 

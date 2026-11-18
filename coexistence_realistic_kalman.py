@@ -225,7 +225,7 @@ if __name__ == '__main__':
     dec = 6
     min_P = 5
     managers = np.array([1, 2])
-    aoii_thr = 2
+    aoii_thr = 3
     mse_thr_vec = [5, 10, 20]
     anomaly_rate = 0.03
     manager_names = ['RSM', 'SSM']
