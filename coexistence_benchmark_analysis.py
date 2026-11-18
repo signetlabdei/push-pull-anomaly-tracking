@@ -152,7 +152,7 @@ def run_episode(episode_idx: int,
                 choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < tx_rate)
                 choices[scheduled] = 0
             elif push_sched_type == 2:
-                choices = rng.randint(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < push_scheduler.rate)
+                choices = rng.integers(1, P + 1, num_nodes) * np.asarray(anomaly_aoii[k, :] > 0) * (rng.random(num_nodes) < push_scheduler.rate)
                 choices[scheduled] = 0
             else:    # push_sched_type == 3:
                 # Get anomaly threshold

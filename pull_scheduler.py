@@ -220,7 +220,7 @@ class PullScheduler:
         :param pull_resources: int, number of REs for pull communication (:math:`Q` in the paper)
         :param aoi: np.ndarray, AoI of each node
         """
-        return np.argsort(-aoi)[:pull_resources]
+        return np.argsort(-aoi, kind="stable")[:pull_resources]
 
     def update_posterior_pmf(self,
                              scheduled: np.ndarray,

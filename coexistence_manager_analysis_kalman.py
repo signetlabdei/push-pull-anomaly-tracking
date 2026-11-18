@@ -37,7 +37,7 @@ if __name__ == '__main__':
     dec = 6
     min_P = 5
     managers = np.array([1, 2])
-    aoii_thr = 2
+    aoii_thr = 3    # TODO: check this with Fede
     mse_thr_vec = [5, 10, 20]
     anomaly_rate = 0.03
     manager_names = ['RSM', 'SSM']
@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
         # Start cases
         # Check if files exist and load it if there
-        prefix = f"coexistence_manager_kalman_thr{mse_thr:02d}"
+        prefix = f"REDO_coexistence_manager_kalman_thr{mse_thr:02d}"
         data = (metrics, manager_names)
         outcomes, filename = cmn.check_data(data, prefix, coexistence_folder, overwrite_flag=overwrite)
 

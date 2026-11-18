@@ -306,7 +306,7 @@ class PushMAFScheduler:
 
         :return: the list of scheduled nodes
         """
-        ordered = np.argsort(-aoi)
+        ordered = np.argsort(-aoi, kind='stable')
         push_sch = [o for o in ordered if o not in pull_sch]
         return np.array(push_sch[:P])
 
