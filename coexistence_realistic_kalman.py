@@ -257,7 +257,7 @@ if __name__ == '__main__':
 
                 start_time = time.time()
                 if parallel:
-                    with ProcessPoolExecutor(mp_context=mp.get_context("spawn"), max_workers=os.cpu_count() // 2) as executor:
+                    with ProcessPoolExecutor(mp_context=mp.get_context("spawn"), max_workers=min(10, os.cpu_count() // 4)) as executor:
                         futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
                         results = [f.result() for f in futures]
                 else:
