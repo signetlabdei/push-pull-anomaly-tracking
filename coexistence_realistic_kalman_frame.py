@@ -17,8 +17,10 @@
  # along with this program. If not, see <http://www.gnu.org/licenses/>.
  #
 
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor
+import multiprocessing as mp
 import numpy as np
 import pandas as pd
 
@@ -66,7 +68,7 @@ if __name__ == '__main__':
 
             start_time = time.time()
             if parallel:
-                with ProcessPoolExecutor() as executor:
+                with ProcessPoolExecutor(mp_context=mp.get_context("spawn"), max_workers=min(10, os.cpu_count() // 4)) as executor:
                     futures = [executor.submit(run_episode, ep, *args) for ep in range(cmn.E)]
                     results = [f.result() for f in futures]
             else:
